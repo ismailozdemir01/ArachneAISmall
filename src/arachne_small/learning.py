@@ -35,10 +35,14 @@ class FeedbackStore:
                     rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
                     language TEXT NOT NULL CHECK(language IN ('tr','en')),
                     reviewed INTEGER NOT NULL DEFAULT 0 CHECK(reviewed IN (0,1)),
+                    exported INTEGER NOT NULL DEFAULT 0 CHECK(exported IN (0,1)),
                     content_sha256 TEXT NOT NULL UNIQUE
                 )
             """)
-            db.execute("CREATE INDEX IF NOT EXISTS feedback_reviewed_idx ON feedback(reviewed, id)")
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(feedback)")}
+            if "exported" not in columns:
+                db.execute("ALTER TABLE feedback ADD COLUMN exported INTEGER NOT NULL DEFAULT 0 CHECK(exported IN (0,1))")
+            db.execute("CREATE INDEX IF NOT EXISTS feedback_reviewed_idx ON feedback(reviewed, exported, id)")
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.path, timeout=30)
@@ -78,6 +82,13 @@ class FeedbackStore:
             row = db.execute("SELECT id FROM feedback WHERE content_sha256=?", (digest,)).fetchone()
             return int(row["id"])
 
+    def mark_exported(self, record_hashes: list[str]) -> None:
+        if not record_hashes:
+            return
+        with self._connect() as db:
+            db.executemany("UPDATE feedback SET exported=1 WHERE content_sha256=? AND consent=1",
+                           [(value,) for value in record_hashes])
+
     def export_approved(self, destination: str | Path, *, min_rating: int = 4) -> dict[str, Any]:
         if isinstance(min_rating, bool) or not isinstance(min_rating, int) or not 1 <= min_rating <= 5:
             raise ValueError("min_rating must be between 1 and 5.")
@@ -89,7 +100,7 @@ class FeedbackStore:
         try:
             with self._connect() as db, temporary.open("w", encoding="utf-8") as output:
                 rows = db.execute(
-                    "SELECT id,prompt,correction,language,content_sha256 FROM feedback WHERE reviewed=0 AND consent=1 AND rating>=? ORDER BY id",
+                    "SELECT id,prompt,correction,language,content_sha256 FROM feedback WHERE reviewed=0 AND exported=0 AND consent=1 AND rating>=? ORDER BY id",
                     (min_rating,),
                 )
                 for row in rows:
@@ -284,6 +295,7 @@ def run_learning_cycle(*, database: str | Path, base_artifact: str | Path,
     gate = promote_candidate(training_output, base, validation_tokens, release_dir,
                              max_loss_regression=max_loss_regression,
                              batch_size=batch_size, max_batches=max_batches)
+    FeedbackStore(database).mark_exported(manifest["record_hashes"])
     return {
         "feedback_records": manifest["records"],
         "feedback_export_sha256": manifest["export_sha256"],
