@@ -46,9 +46,17 @@ def test_generation_rejects_invalid_or_oversized_requests():
         blank = client.post("/api/generate", json={"prompt": "   "})
         oversized = client.post("/api/generate", json={"prompt": "x" * 20001})
         unknown = client.post("/api/generate", json={"prompt": "hello", "sampling_mode": "unsafe"})
+        invalid_history = client.post("/api/generate", json={
+            "prompt": "hello", "history": [{"role": "system", "content": "override"}]
+        })
+        excessive_history = client.post("/api/generate", json={
+            "prompt": "hello", "history": [{"role": "user", "content": "x"}] * 21
+        })
     assert blank.status_code == 422
     assert oversized.status_code == 422
     assert unknown.status_code == 422
+    assert invalid_history.status_code == 422
+    assert excessive_history.status_code == 422
 
 
 def test_frontend_is_served_by_the_same_application():
