@@ -118,3 +118,37 @@ def prepare_corpus(
         database_path.unlink(missing_ok=True)
         for path in temporary_paths:
             path.unlink(missing_ok=True)
+
+
+def export_text(input_path: str, output_path: str, text_field: str = "text") -> int:
+    """Export normalized JSONL document text as one UTF-8 document per line."""
+    source = Path(input_path)
+    target = Path(output_path)
+    if not source.is_file():
+        raise FileNotFoundError(source)
+    if not text_field:
+        raise ValueError("text_field must not be empty.")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_name(target.name + ".tmp")
+    count = 0
+    try:
+        with source.open("r", encoding="utf-8") as src, temporary.open("w", encoding="utf-8", newline="\n") as dst:
+            for line_no, line in enumerate(src, 1):
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(f"Invalid JSONL at {source}:{line_no}") from exc
+                if not isinstance(row, dict) or not isinstance(row.get(text_field), str):
+                    continue
+                text = _normalize_document(row[text_field])
+                if text:
+                    dst.write(text + "\n")
+                    count += 1
+        if count == 0:
+            raise ValueError(f"No usable text documents were found in {source}")
+        os.replace(temporary, target)
+        return count
+    finally:
+        temporary.unlink(missing_ok=True)
