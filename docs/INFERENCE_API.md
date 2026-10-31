@@ -39,6 +39,10 @@ Request JSON:
 ```json
 {
   "prompt": "Merhaba, kendini tanıt.",
+  "history": [
+    {"role": "user", "content": "Merhaba."},
+    {"role": "assistant", "content": "Merhaba, nasıl yardımcı olabilirim?"}
+  ],
   "max_new_tokens": 256,
   "temperature": 0.8,
   "top_k": 50,
@@ -52,6 +56,7 @@ Constraints:
 - temperature: 0.05–2.0.
 - top_k: 0–500; zero disables top-k filtering.
 - language: `auto`, `tr`, or `en`.
+- history: up to 20 previous `user`/`assistant` messages, each at most 4,000 characters and 20,000 characters total. System/developer roles are not accepted.
 
 Successful response:
 
@@ -74,7 +79,7 @@ HTTP 503 means no trained artifact is loaded or inference is temporarily unavail
 - A process-wide re-entrant lock serializes generation and protects the single model instance.
 - Prompt input is bounded at the API boundary and tokenized input is truncated to the model context window.
 - The browser UI inserts user and model text using DOM text nodes, not HTML interpretation.
-- The UI does not persist conversation content on the server.
+- The UI sends a bounded previous-turn history with each generation request; history is held in browser memory and cleared by starting a new chat. No conversation content is persisted on the server or across page reloads.
 - The API currently provides synchronous generation, not token streaming or multi-user scheduling.
 
 A trained artifact is a prerequisite for inference. A configured architecture or an untrained checkpoint must not be represented as a released trained model.
