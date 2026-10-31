@@ -143,6 +143,12 @@ class FeedbackStore:
 def evaluate_artifact(artifact: str | Path, validation_tokens: str | Path,
                       *, batch_size: int = 1, max_batches: int = 200,
                       precision: str = "fp32") -> dict[str, Any]:
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size < 1:
+        raise ValueError("batch_size must be a positive integer.")
+    if isinstance(max_batches, bool) or not isinstance(max_batches, int) or max_batches < 1:
+        raise ValueError("max_batches must be a positive integer.")
+    if precision not in {"fp32", "bf16", "fp16"}:
+        raise ValueError("precision must be fp32, bf16 or fp16.")
     summary = verify_artifact(artifact)
     model, _ = load_model(artifact, "cuda" if torch.cuda.is_available() else "cpu")
     device = next(model.parameters()).device
@@ -173,8 +179,11 @@ def promote_candidate(candidate: str | Path, baseline: str | Path,
                       validation_tokens: str | Path, release_dir: str | Path,
                       *, max_loss_regression: float = 0.0,
                       batch_size: int = 1, max_batches: int = 200) -> dict[str, Any]:
-    if max_loss_regression < 0:
-        raise ValueError("max_loss_regression cannot be negative.")
+    if (isinstance(max_loss_regression, bool)
+            or not isinstance(max_loss_regression, (int, float))
+            or not __import__("math").isfinite(max_loss_regression)
+            or max_loss_regression < 0):
+        raise ValueError("max_loss_regression must be a finite non-negative number.")
     baseline_metrics = evaluate_artifact(baseline, validation_tokens, batch_size=batch_size, max_batches=max_batches)
     candidate_metrics = evaluate_artifact(candidate, validation_tokens, batch_size=batch_size, max_batches=max_batches)
     allowed = baseline_metrics["validation_loss"] + max_loss_regression
