@@ -46,6 +46,7 @@ def prepare_corpus(
         raise FileExistsError(f"Prepared dataset outputs already exist in {destination}")
     input_digest = hashlib.sha256()
     train_count = validation_count = duplicate_count = skipped_count = 0
+    database_path.unlink(missing_ok=True)
     connection = sqlite3.connect(database_path)
     try:
         connection.execute("PRAGMA journal_mode=OFF")
