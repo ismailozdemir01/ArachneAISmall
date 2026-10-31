@@ -49,6 +49,33 @@ def evaluate(model, loader, device, max_batches: int = 50) -> float:
     sample_count = sum(batch_size for _, batch_size in losses)
     return sum(loss * batch_size for loss, batch_size in losses) / sample_count
 
+def _truncate_training_log(path: Path, checkpoint_step: int) -> None:
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+        return
+    temporary = path.with_name(path.name + ".tmp")
+    try:
+        with path.open("r", encoding="utf-8") as source, temporary.open("w", encoding="utf-8") as target:
+            lines = source.readlines()
+            for index, line in enumerate(lines):
+                if not line.strip():
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    if index == len(lines) - 1 and not line.endswith("\\n"):
+                        break
+                    raise ValueError(f"Corrupt training log at {path}:{index + 1}")
+                if not isinstance(record, dict) or not isinstance(record.get("step"), int):
+                    raise ValueError(f"Invalid training log record at {path}:{index + 1}")
+                if record["step"] <= checkpoint_step:
+                    target.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + "\\n")
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def _atomic_json_save(payload: dict, destination: Path) -> None:
     temporary = destination.with_name(destination.name + ".tmp")
     try:
@@ -145,6 +172,7 @@ def train(config: Config, train_path: str, validation_path: str,
     ], lr=config.training.learning_rate, betas=(0.9, 0.95), eps=1e-8)
     scaler = torch.amp.GradScaler("cuda", enabled=(precision == "fp16"))
     start_step = 0
+    tokens_seen = 0
     if resume:
         checkpoint = torch.load(resume, map_location=device, weights_only=True)
         if not isinstance(checkpoint, dict) or checkpoint.get("model_config") != config.model.__dict__:
@@ -156,6 +184,9 @@ def train(config: Config, train_path: str, validation_path: str,
         model.load_state_dict(checkpoint["model"], strict=True)
         optimizer.load_state_dict(checkpoint["optimizer"])
         start_step = int(checkpoint["step"])
+        tokens_seen = int(checkpoint.get("tokens_seen", 0))
+        if tokens_seen < 0:
+            raise ValueError("Checkpoint token counter cannot be negative.")
         if start_step < 0 or start_step > config.training.max_steps:
             raise ValueError("Checkpoint step is outside the configured training schedule.")
         if "scaler" in checkpoint:
@@ -165,6 +196,8 @@ def train(config: Config, train_path: str, validation_path: str,
     log_path = out / "training.jsonl"
     if log_path.exists() and not resume:
         raise FileExistsError(f"Training log already exists: {log_path}. Choose a new output_dir or resume a checkpoint.")
+    if resume:
+        _truncate_training_log(log_path, start_step)
     if (out / "model.safetensors").exists() and not resume:
         raise FileExistsError(f"Model artifact already exists in {out}; choose a new output_dir.")
     iterator = iter(train_loader)
@@ -176,12 +209,14 @@ def train(config: Config, train_path: str, validation_path: str,
             group["lr"] = lr
         optimizer.zero_grad(set_to_none=True)
         accumulated = 0.0
+        step_tokens = 0
         for _ in range(config.training.gradient_accumulation_steps):
             try:
                 x, y = next(iterator)
             except StopIteration:
                 iterator = iter(train_loader)
                 x, y = next(iterator)
+            step_tokens += x.numel()
             x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
             amp_dtype = torch.bfloat16 if precision == "bf16" else torch.float16
             with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=precision != "fp32"):
@@ -196,7 +231,9 @@ def train(config: Config, train_path: str, validation_path: str,
             raise RuntimeError(f"Gradient norm became non-finite at step {step + 1}.")
         scaler.step(optimizer)
         scaler.update()
-        record = {"step": step + 1, "loss": accumulated, "learning_rate": lr,
+        tokens_seen += step_tokens
+        record = {"step": step + 1, "tokens_seen": tokens_seen,
+                  "tokens_this_step": step_tokens, "loss": accumulated, "learning_rate": lr,
                   "gradient_norm": float(grad_norm.item())}
         if (step + 1) % config.training.eval_interval == 0 or step + 1 == config.training.max_steps:
             record["validation_loss"] = evaluate(model, val_loader, device)
@@ -206,7 +243,8 @@ def train(config: Config, train_path: str, validation_path: str,
             log.flush()
         if (step + 1) % config.training.save_interval == 0 or step + 1 == config.training.max_steps:
             path = out / "checkpoints" / f"step-{step + 1:08d}.pt"
-            _atomic_torch_save({"artifact_version": 1, "step": step + 1, "model": model.state_dict(),
+            _atomic_torch_save({"artifact_version": 1, "step": step + 1,
+                                "tokens_seen": tokens_seen, "model": model.state_dict(),
                                 "optimizer": optimizer.state_dict(), "scaler": scaler.state_dict(),
                                 "model_config": config.model.__dict__,
                                 "training_config": config.training.__dict__,
@@ -239,6 +277,7 @@ def train(config: Config, train_path: str, validation_path: str,
         "format": "arachne-small-artifact",
         "format_version": 1,
         "training_steps_completed": config.training.max_steps,
+        "training_tokens_processed": tokens_seen,
         "training": {
             "seed": config.training.seed,
             "precision": config.training.precision,
