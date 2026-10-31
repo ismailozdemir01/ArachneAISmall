@@ -2,6 +2,8 @@
 
 ArachneAISmall is the from-scratch model research and training repository for the ArachneAI ecosystem. It is intentionally separate from the commercial SaaS repository and from the open-source inference runtime.
 
+Türkçe dokümantasyon: [README_TR.md](README_TR.md).
+
 ## Model design
 
 The initial target configuration is a 1.5B-class decoder-only Transformer. The checked-in dimensions resolve to approximately 1.524B trainable parameters, calculated from the implemented layers and embeddings with RMSNorm, rotary position embeddings (RoPE), grouped-query causal attention, and SwiGLU feed-forward layers. The dimensions are explicit and configurable; run the parameter counter rather than assuming a label equals an exact parameter count.
@@ -16,7 +18,7 @@ Use Python 3.10+ and install a PyTorch build appropriate for the target CPU/CUDA
 python -m venv .venv
 # Activate the environment, then:
 python -m pip install --upgrade pip
-python -m pip install -e .
+python -m pip install -e ".[dev]"
 ```
 
 ## Data contract and provenance
