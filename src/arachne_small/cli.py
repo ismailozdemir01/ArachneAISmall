@@ -1,4 +1,5 @@
 import argparse
+from pathlib import Path
 import sentencepiece as spm
 from .config import load_config
 from .data import encode_jsonl
