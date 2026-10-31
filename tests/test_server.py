@@ -64,3 +64,39 @@ def test_frontend_is_served_by_the_same_application():
         response = client.get("/")
     assert response.status_code == 200
     assert "ArachneAISmall" in response.text
+
+
+
+def test_feedback_endpoint_requires_explicit_consent_and_persists_locally(tmp_path, monkeypatch):
+    database = tmp_path / "feedback.sqlite3"
+    monkeypatch.setenv("ARACHNE_SMALL_FEEDBACK_DB", str(database))
+    payload = {
+        "consent": True,
+        "prompt": "Explain this concept",
+        "response": "An incomplete answer",
+        "correction": "A corrected and useful explanation",
+        "rating": 5,
+        "language": "en",
+    }
+    with TestClient(app) as client:
+        denied = client.post("/api/feedback", json={**payload, "consent": False})
+        accepted = client.post("/api/feedback", json=payload)
+    assert denied.status_code == 422
+    assert accepted.status_code == 200
+    assert accepted.json()["stored"] is True
+    assert database.is_file()
+
+
+def test_feedback_endpoint_rejects_sensitive_content(tmp_path, monkeypatch):
+    monkeypatch.setenv("ARACHNE_SMALL_FEEDBACK_DB", str(tmp_path / "feedback.sqlite3"))
+    payload = {
+        "consent": True,
+        "prompt": "Question",
+        "response": "Answer",
+        "correction": "Email me at user@example.com",
+        "rating": 5,
+        "language": "en",
+    }
+    with TestClient(app) as client:
+        response = client.post("/api/feedback", json=payload)
+    assert response.status_code == 422
