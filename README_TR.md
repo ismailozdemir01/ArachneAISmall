@@ -94,6 +94,25 @@ arachne-small verify-artifact --path artifacts/arachne-small-1.5b
 
 ArachneAIOpen ile ortak artifact sözleşmesi [docs/ARTIFACT_FORMAT.md](docs/ARTIFACT_FORMAT.md) içinde tanımlanmıştır.
 
+## Kullanıcı arayüzü ve çıkarım API'si
+
+Eğitim tamamlandıktan ve artifact doğrulandıktan sonra yerel sunucuyu başlatın:
+
+```powershell
+$env:ARACHNE_SMALL_ARTIFACT = "artifacts/arachne-small-1.5b"
+arachne-small serve
+```
+
+Ardından tarayıcıdan `http://127.0.0.1:8000` adresini açın. Arayüz gerçek çıkarım API'sine bağlanır; sahte model yanıtı üretmez. Doğrulanmış artifact yüklenmemişse model durumu açıkça kullanılamaz olarak gösterilir ve üretim isteği HTTP 503 döndürür. Sunucu varsayılan olarak yalnızca yerel arayüzde dinler. Uzak erişim varsayılan olarak kapalıdır; uzaktan yayın için `ARACHNE_SMALL_ALLOW_REMOTE=1` ayarıyla birlikte kimlik doğrulamalı TLS reverse proxy ve ağ erişim denetimleri zorunlu kabul edilmelidir.
+
+API:
+- `GET /api/health`: servis sağlık kontrolü.
+- `GET /api/status`: model, artifact, donanım ve mimari durumu.
+- `POST /api/generate`: sınırlandırılmış metin üretimi.
+- `GET /docs`: etkileşimli OpenAPI belgesi.
+
+Model süreç başlangıcında bir kez yüklenir. GPU belleğinin eşzamanlı isteklerle kontrolsüz tüketilmesini önlemek için çıkarım istekleri süreç içinde sıraya alınır. Ayrıntılar: [Inference API](docs/INFERENCE_API.md).
+
 ## Veri yönetişimi ve model kartı
 
 - [Model Card](docs/MODEL_CARD.md)
