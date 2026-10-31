@@ -17,6 +17,8 @@ def _write_tokens(path, token_ids, tokenizer_hash):
         "token_file_sha256": hashlib.sha256(encoded).hexdigest(),
         "tokenizer_vocab_size": 16,
         "tokenizer_sha256": tokenizer_hash,
+        "eos_id": 3,
+        "special_tokens": {"pad_id": 0, "unk_id": 1, "bos_id": 2, "eos_id": 3},
     }
     path.with_name(path.name + ".json").write_text(json.dumps(metadata), encoding="utf-8")
 
