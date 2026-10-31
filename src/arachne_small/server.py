@@ -79,7 +79,7 @@ class Runtime:
                 role = "User" if message.role == "user" else "Assistant"
                 turns.append(f"{role}: {message.content.strip()}")
             turns.append(f"User: {current_prompt}")
-            text = language_prefix + "\\n".join(turns) + "\\nAssistant:"
+            text = language_prefix + "\n".join(turns) + "\nAssistant:"
             token_ids = self.tokenizer.encode(text, out_type=int, add_bos=True)
             if not token_ids:
                 raise ValueError("Prompt produced no tokens.")
