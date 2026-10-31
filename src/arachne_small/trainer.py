@@ -193,9 +193,9 @@ def train(config: Config, train_path: str, validation_path: str,
         scaler.update()
         record = {"step": step + 1, "loss": accumulated, "learning_rate": lr,
                   "gradient_norm": float(grad_norm.item())}
-        if (step + 1) % config.training.eval_interval == 0:
+        if (step + 1) % config.training.eval_interval == 0 or step + 1 == config.training.max_steps:
             record["validation_loss"] = evaluate(model, val_loader, device)
-            record["validation_perplexity"] = math.exp(min(20.0, record["validation_loss"]))
+            record["validation_perplexity"] = math.exp(min(80.0, record["validation_loss"]))
         with log_path.open("a", encoding="utf-8") as log:
             log.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + "\n")
             log.flush()
@@ -234,6 +234,15 @@ def train(config: Config, train_path: str, validation_path: str,
         "format": "arachne-small-artifact",
         "format_version": 1,
         "training_steps_completed": config.training.max_steps,
+        "training": {
+            "seed": config.training.seed,
+            "precision": config.training.precision,
+            "batch_size": config.training.batch_size,
+            "gradient_accumulation_steps": config.training.gradient_accumulation_steps,
+            "max_steps": config.training.max_steps,
+            "learning_rate": config.training.learning_rate,
+            "weight_decay": config.training.weight_decay,
+        },
         "parameter_count": config.model.parameter_count(),
         "model_config_sha256": sha256_file(config_output),
         "weights_sha256": sha256_file(model_path),
