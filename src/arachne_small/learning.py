@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import tempfile
 import time
@@ -232,7 +233,7 @@ def _read_release_version(release: Path) -> str | None:
         return None
     data = json.loads(pointer.read_text(encoding="utf-8"))
     version = data.get("version")
-    if not isinstance(version, str) or not (release / version).is_dir():
+    if not isinstance(version, str) or not re.fullmatch(r"[0-9a-f]{64}", version) or not (release / version).is_dir():
         raise ValueError("Existing release pointer is invalid; refusing to overwrite it.")
     verify_artifact(release / version)
     return version
@@ -257,8 +258,8 @@ def rollback_release(release_dir: str | Path, version: str | None = None) -> dic
     pointer_path = release / "current.json"
     pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
     target = version or pointer.get("previous_version")
-    if not isinstance(target, str) or target == current:
-        raise ValueError("A distinct previous release version is required for rollback.")
+    if not isinstance(target, str) or not re.fullmatch(r"[0-9a-f]{64}", target) or target == current:
+        raise ValueError("A distinct, valid content-hash release version is required for rollback.")
     target_path = release / target
     if not target_path.is_dir():
         raise FileNotFoundError(f"Release version does not exist: {target}")
