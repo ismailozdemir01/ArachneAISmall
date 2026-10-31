@@ -63,6 +63,30 @@ For a genuine end-to-end code smoke run on a small machine, use `configs/dev.yam
 
 Resume from a checkpoint with `--resume path/to/checkpoints/step-XXXXXXXX.pt`. The completed run exports `model.safetensors`, the exact `tokenizer.model`, `config.json`, and `artifact-manifest.json`; the package contract is defined in [docs/ARTIFACT_FORMAT.md](docs/ARTIFACT_FORMAT.md). Checkpoints contain model and optimizer state. Resume files are trusted local training artifacts; do not load files from untrusted sources. Resume restores model and optimizer state, but does not guarantee bit-for-bit replay of the data-loader shuffle position.
 
+## Local inference API and user interface
+
+After training and verifying an artifact, start the local inference server:
+
+```bash
+# Linux/macOS
+export ARACHNE_SMALL_ARTIFACT="artifacts/arachne-small-1.5b"
+arachne-small serve
+
+# Windows PowerShell
+$env:ARACHNE_SMALL_ARTIFACT = "artifacts/arachne-small-1.5b"
+arachne-small serve
+```
+
+Open `http://127.0.0.1:8000`. The browser UI calls the real inference API; it does not contain a simulated model response. If no verified artifact is configured, the interface reports that the model is unavailable and generation returns HTTP 503. The server binds to loopback by default. Remote binding is blocked unless explicitly enabled with `ARACHNE_SMALL_ALLOW_REMOTE=1`; remote deployments must be placed behind an authenticated TLS reverse proxy and network access controls.
+
+API endpoints:
+- `GET /api/health`: process health.
+- `GET /api/status`: loaded artifact, device and model dimensions.
+- `POST /api/generate`: text generation with bounded prompt and generation parameters.
+- `GET /docs`: interactive OpenAPI documentation.
+
+The model is loaded once at startup and inference requests are serialized per process to prevent concurrent generation from exhausting accelerator memory. See [docs/INFERENCE_API.md](docs/INFERENCE_API.md) for the API contract and deployment notes.
+
 ## Model card and data governance
 
 See [docs/MODEL_CARD.md](docs/MODEL_CARD.md) for the model's release status and evaluation requirements, and [docs/DATASET_POLICY.md](docs/DATASET_POLICY.md) for dataset intake and provenance rules.
