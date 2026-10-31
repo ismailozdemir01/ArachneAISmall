@@ -184,27 +184,40 @@ def promote_candidate(candidate: str | Path, baseline: str | Path,
             f"exceeds baseline threshold {allowed:.8f}."
         )
     candidate_path = Path(candidate).expanduser().resolve()
+    baseline_path = Path(baseline).expanduser().resolve()
     release = Path(release_dir).expanduser().resolve()
     release.mkdir(parents=True, exist_ok=True)
-    # Copy the fully verified artifact into an immutable, content-addressed release directory.
     import shutil
     version = candidate_metrics["weights_sha256"]
-    destination = release / version
-    if destination.exists():
-        verify_artifact(destination)
-    else:
-        staging = release / (version + ".staging")
+    baseline_version = baseline_metrics["weights_sha256"]
+    if version == baseline_version:
+        raise RuntimeError("Candidate weights are identical to the baseline; no release was created.")
+
+    def install_immutable(source: Path, digest: str) -> None:
+        destination = release / digest
+        if destination.exists():
+            verify_artifact(destination)
+            if verify_artifact(destination)["weights_sha256"] != digest:
+                raise ValueError("Content-addressed release directory contains the wrong artifact.")
+            return
+        staging = release / (digest + ".staging")
         if staging.exists():
             shutil.rmtree(staging)
-        shutil.copytree(candidate_path, staging)
-        verify_artifact(staging)
+        shutil.copytree(source, staging)
+        if verify_artifact(staging)["weights_sha256"] != digest:
+            shutil.rmtree(staging)
+            raise ValueError("Staged release artifact hash does not match its content address.")
         os.replace(staging, destination)
+
+    install_immutable(baseline_path, baseline_version)
+    install_immutable(candidate_path, version)
+    previous_version = _read_release_version(release) or baseline_version
     pointer = {
         "format": "arachne-small-release",
         "format_version": 1,
         "version": version,
         "artifact": version,
-        "previous_version": _read_release_version(release),
+        "previous_version": previous_version,
         "baseline": baseline_metrics,
         "candidate": candidate_metrics,
         "promoted_at": int(time.time()),
