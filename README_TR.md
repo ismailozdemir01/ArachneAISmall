@@ -109,6 +109,7 @@ API:
 - `GET /api/health`: servis sağlık kontrolü.
 - `GET /api/status`: model, artifact, donanım ve mimari durumu.
 - `POST /api/generate`: sınırlandırılmış metin üretimi.
+- `POST /api/feedback`: yalnızca açık rıza ile yerel düzeltme kaydı.
 - `GET /docs`: etkileşimli OpenAPI belgesi.
 
 Model süreç başlangıcında bir kez yüklenir. GPU belleğinin eşzamanlı isteklerle kontrolsüz tüketilmesini önlemek için çıkarım istekleri süreç içinde sıraya alınır. Ayrıntılar: [Inference API](docs/INFERENCE_API.md).
