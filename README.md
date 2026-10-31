@@ -29,19 +29,24 @@ Training input is JSONL with one document per line, for example:
 
 Only use corpora for which you have documented rights to train. Keep raw data out of Git. Record source, license, collection date, filtering, deduplication, and consent/provenance in your own dataset manifest. Do not include personal or confidential data without a lawful basis and appropriate authorization.
 
-Train a SentencePiece BPE tokenizer from your authorized UTF-8 text corpus:
+Prepare the source corpus before tokenization. This step normalizes Unicode and whitespace, removes exact normalized duplicates with a disk-backed index, performs a deterministic document-level train/validation split, and writes a provenance manifest. Source and license are mandatory metadata:
 
 ```bash
-arachne-small tokenizer --input data/corpus.txt --output-prefix artifacts/tokenizer/arachne --vocab-size 32000
+arachne-small prepare-corpus --input data/source.jsonl --output-dir data/split --validation-fraction 0.01 --seed 1337 --source "Dataset origin and version" --license "Exact license or written grant"
 ```
 
-Encode JSONL documents into a compact little-endian uint32 binary token stream. The encoder streams documents and the training dataset memory-maps the resulting file, avoiding loading the full token corpus into RAM:
+Train a SentencePiece BPE tokenizer from the authorized training documents only, so validation text does not leak into tokenizer training:
 
 ```bash
-arachne-small prepare-data --input data/train.jsonl --output data/processed/train.bin --tokenizer artifacts/tokenizer/arachne.model --eos-id 3
+python -c "import json; [print(json.loads(line)['text']) for line in open('data/split/train.jsonl', encoding='utf-8')]" > data/train-corpus.txt
+arachne-small tokenizer --input data/train-corpus.txt --output-prefix artifacts/tokenizer/arachne --vocab-size 32000
 ```
 
-Create train and validation source files before encoding; keep documents isolated between splits to prevent leakage.
+Encode the two document splits independently:
+```bash
+arachne-small prepare-data --input data/split/train.jsonl --output data/processed/train.bin --tokenizer artifacts/tokenizer/arachne.model --eos-id 3
+arachne-small prepare-data --input data/split/validation.jsonl --output data/processed/validation.bin --tokenizer artifacts/tokenizer/arachne.model --eos-id 3
+```
 
 ## Training
 
