@@ -112,6 +112,10 @@ class ArachneSmall(nn.Module):
             raise ValueError("labels must have the same [batch, sequence] shape as input_ids.")
         if labels is not None and labels.dtype != torch.int64:
             raise TypeError("labels must use torch.int64 token IDs.")
+        if labels is not None:
+            valid_labels = labels != -100
+            if torch.any(labels[valid_labels] < 0) or torch.any(labels[valid_labels] >= self.config.vocab_size):
+                raise ValueError("labels contain token IDs outside the configured vocabulary.")
         x = self.token_embedding(input_ids)
         if activation_dtype is not None:
             if activation_dtype not in (torch.float16, torch.bfloat16):
@@ -137,12 +141,17 @@ class ArachneSmall(nn.Module):
             raise ValueError("input_ids must have shape [batch, sequence].")
         if not isinstance(max_new_tokens, int) or isinstance(max_new_tokens, bool) or max_new_tokens < 0:
             raise ValueError("max_new_tokens must be a non-negative integer.")
-        if not math.isfinite(temperature) or temperature <= 0:
-            raise ValueError("temperature must be finite and positive.")
-        if eos_token_id is not None and not 0 <= eos_token_id < self.config.vocab_size:
+        if not isinstance(temperature, (int, float)) or isinstance(temperature, bool) or not math.isfinite(temperature) or temperature <= 0:
+            raise ValueError("temperature must be a finite positive number.")
+        if eos_token_id is not None and (
+            not isinstance(eos_token_id, int) or isinstance(eos_token_id, bool)
+            or not 0 <= eos_token_id < self.config.vocab_size
+        ):
             raise ValueError("eos_token_id is outside the configured vocabulary.")
-        if top_k is not None and top_k < 0:
-            raise ValueError("top_k must be non-negative or None.")
+        if top_k is not None and (
+            not isinstance(top_k, int) or isinstance(top_k, bool) or top_k < 0
+        ):
+            raise ValueError("top_k must be a non-negative integer or None.")
         self.eval()
         for _ in range(max_new_tokens):
             context = input_ids[:, -self.config.max_seq_len:]
