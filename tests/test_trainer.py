@@ -31,7 +31,7 @@ def test_tiny_training_writes_versioned_model_and_checkpoint(tmp_path):
     tokenizer_prefix = tmp_path / "tokenizer"
     tokenizer_corpus = tmp_path / "tokenizer-corpus.txt"
     tokenizer_corpus.write_text(
-        "\\n".join(
+        "\n".join(
             f"Türkçe English ArachneAI language model training sample {index} "
             "ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789"
             for index in range(500)
