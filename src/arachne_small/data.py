@@ -104,6 +104,12 @@ def encode_jsonl(input_path: str, output_path: str, tokenizer_path: str,
             "tokenizer_sha256": sha256_file(tokenizer_file),
             "tokenizer_vocab_size": tokenizer.vocab_size(),
             "eos_id": eos_id,
+            "special_tokens": {
+                "pad_id": tokenizer.pad_id(),
+                "unk_id": tokenizer.unk_id(),
+                "bos_id": tokenizer.bos_id(),
+                "eos_id": tokenizer.eos_id(),
+            },
             "text_field": text_field,
         }
         metadata_temporary.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
