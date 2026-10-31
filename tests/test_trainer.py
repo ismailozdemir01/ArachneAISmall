@@ -54,7 +54,7 @@ def test_tiny_training_writes_versioned_model_and_checkpoint(tmp_path):
     tokenizer_hash = hashlib.sha256(tokenizer_path.read_bytes()).hexdigest()
     train_path = tmp_path / "train.bin"
     validation_path = tmp_path / "validation.bin"
-    token_ids = [index % vocab_size for index in range(80)]
+    token_ids = [(index % (vocab_size - 4)) + 4 for index in range(80)]
     _write_tokens(train_path, token_ids, tokenizer_hash, vocab_size, special_tokens)
     _write_tokens(validation_path, token_ids, tokenizer_hash, vocab_size, special_tokens)
 
