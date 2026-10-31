@@ -42,7 +42,7 @@ class TokenBlockDataset(Dataset):
         return chunk[:-1], chunk[1:]
 
 def encode_jsonl(input_path: str, output_path: str, tokenizer_path: str,
-                 text_field: str = "text", eos_id: int | None = 3) -> int:
+                 text_field: str = "text", eos_id: int = 3) -> int:
     """Encode JSONL documents to an atomic little-endian uint32 stream plus provenance metadata."""
     import sentencepiece as spm
     source = Path(input_path)
@@ -55,7 +55,7 @@ def encode_jsonl(input_path: str, output_path: str, tokenizer_path: str,
     if not text_field:
         raise ValueError("text_field must not be empty.")
     tokenizer = spm.SentencePieceProcessor(model_file=str(tokenizer_file))
-    if eos_id is not None and not 0 <= eos_id < tokenizer.vocab_size():
+    if not isinstance(eos_id, int) or isinstance(eos_id, bool) or not 0 <= eos_id < tokenizer.vocab_size():
         raise ValueError(f"eos_id {eos_id} is outside tokenizer vocabulary.")
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name(target.name + ".tmp")
@@ -82,8 +82,7 @@ def encode_jsonl(input_path: str, output_path: str, tokenizer_path: str,
                 if not isinstance(text, str) or not text.strip():
                     continue
                 ids = tokenizer.encode(text, out_type=int)
-                if eos_id is not None:
-                    ids.append(eos_id)
+                ids.append(eos_id)
                 if any(token < 0 or token >= tokenizer.vocab_size() for token in ids):
                     raise ValueError(f"Tokenizer produced an out-of-range token at {source}:{line_no}")
                 if ids:
