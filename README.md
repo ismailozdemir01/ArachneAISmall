@@ -35,10 +35,10 @@ Train a SentencePiece BPE tokenizer from your authorized UTF-8 text corpus:
 arachne-small tokenizer --input data/corpus.txt --output-prefix artifacts/tokenizer/arachne --vocab-size 32000
 ```
 
-Encode JSONL documents into token blocks:
+Encode JSONL documents into a compact little-endian uint32 binary token stream. The encoder streams documents and the training dataset memory-maps the resulting file, avoiding loading the full token corpus into RAM:
 
 ```bash
-arachne-small prepare-data --input data/train.jsonl --output data/processed/train.jsonl --tokenizer artifacts/tokenizer/arachne.model --eos-id 3
+arachne-small prepare-data --input data/train.jsonl --output data/processed/train.bin --tokenizer artifacts/tokenizer/arachne.model --eos-id 3
 ```
 
 Create train and validation source files before encoding; keep documents isolated between splits to prevent leakage.
@@ -47,12 +47,12 @@ Create train and validation source files before encoding; keep documents isolate
 
 ```bash
 arachne-small count-parameters --config configs/1_5b.yaml
-arachne-small train --config configs/1_5b.yaml --train-data data/processed/train.jsonl --validation-data data/processed/validation.jsonl
+arachne-small train --config configs/1_5b.yaml --train-data data/processed/train.bin --validation-data data/processed/validation.bin
 ```
 
 For a genuine end-to-end code smoke run on a small machine, use `configs/dev.yaml` with a tokenizer/data set whose vocabulary and sequence length match that configuration. The 1.5B target requires substantial accelerator memory, storage, and training time; the configuration is not a claim that weights have already been trained.
 
-Resume from a checkpoint with `--resume path/to/checkpoints/step-XXXXXXXX.pt`. Checkpoints contain model and optimizer state and should be treated as trusted local artifacts; never load untrusted pickle-based checkpoints.
+Resume from a checkpoint with `--resume path/to/checkpoints/step-XXXXXXXX.pt`. Checkpoints contain model and optimizer state. Resume files are trusted local training artifacts; do not load files from untrusted sources. Resume restores model and optimizer state, but does not guarantee bit-for-bit replay of the data-loader shuffle position.
 
 ## Repository boundary
 
