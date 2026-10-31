@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from . import __version__
 from .artifacts import load_model, verify_artifact
+from .learning import FeedbackStore
 
 LOGGER = logging.getLogger("arachne_small.server")
 FRONTEND_DIR = Path(__file__).with_name("frontend")
@@ -118,6 +119,16 @@ class ChatMessage(BaseModel):
         return value
 
 
+class FeedbackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    consent: Literal[True]
+    prompt: str = Field(min_length=1, max_length=8000)
+    response: str = Field(min_length=1, max_length=8000)
+    correction: str = Field(min_length=1, max_length=8000)
+    rating: int = Field(ge=1, le=5)
+    language: Literal["tr", "en"]
+
+
 class GenerateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     prompt: str = Field(min_length=1, max_length=MAX_PROMPT_CHARS)
@@ -179,6 +190,25 @@ def health() -> dict:
 @app.get("/api/status")
 def status() -> dict:
     return runtime.status()
+
+
+@app.post("/api/feedback")
+def submit_feedback(payload: FeedbackRequest) -> dict:
+    database = os.environ.get("ARACHNE_SMALL_FEEDBACK_DB", "data/feedback.sqlite3")
+    try:
+        record_id = FeedbackStore(database).add(
+            consent=payload.consent,
+            prompt=payload.prompt,
+            response=payload.response,
+            correction=payload.correction,
+            rating=payload.rating,
+            language=payload.language,
+        )
+        return {"stored": True, "feedback_id": record_id}
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
 @app.post("/api/generate")
