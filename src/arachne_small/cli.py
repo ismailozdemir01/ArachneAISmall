@@ -1,12 +1,15 @@
 import argparse
 import json
 from pathlib import Path
+
 import sentencepiece as spm
+
 from .config import load_config
 from .data import encode_jsonl
 from .trainer import train
 from .corpus import prepare_corpus, export_text
 from .artifacts import verify_artifact
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="arachne-small")
@@ -43,6 +46,7 @@ def main() -> None:
     verify.add_argument("--path", required=True, help="Completed artifact directory")
     count = commands.add_parser("count-parameters")
     count.add_argument("--config", required=True)
+    commands.add_parser("serve", help="Start the local inference API and web interface")
     args = parser.parse_args()
     if args.command == "tokenizer":
         if args.vocab_size < 256:
@@ -72,6 +76,10 @@ def main() -> None:
     elif args.command == "count-parameters":
         cfg = load_config(args.config)
         print(f"parameters={cfg.model.parameter_count():,}")
+    elif args.command == "serve":
+        from .server import main as serve
+        serve()
+
 
 if __name__ == "__main__":
     main()
