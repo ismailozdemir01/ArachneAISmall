@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10151d">
+  <meta name="description" content="ArachneAISmall yerel Türkçe ve İngilizce dil modeli arayüzü.">
+  <title>ArachneAISmall — Model Sohbeti</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="ArachneAISmall ana sayfa">
+        <span class="brand-mark">A</span>
+        <span><strong>ArachneAI</strong><small>SMALL MODEL</small></span>
+      </a>
+      <div class="top-actions">
+        <span id="runtime-state" class="status-pill pending"><i></i><span>Model durumu kontrol ediliyor</span></span>
+        <button id="language-toggle" class="icon-button" type="button" aria-label="Switch language">EN</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="sidebar">
+        <button id="new-chat" class="new-chat" type="button"><span>＋</span><span data-i18n="newChat">Yeni sohbet</span></button>
+        <div class="sidebar-section">
+          <span class="section-label" data-i18n="runtime">ÇALIŞMA DURUMU</span>
+          <div class="info-card">
+            <div class="info-row"><span data-i18n="model">Model</span><strong>Arachne Small</strong></div>
+            <div class="info-row"><span data-i18n="device">Donanım</span><strong id="device-value">—</strong></div>
+            <div class="info-row"><span data-i18n="parameters">Parametre</span><strong id="parameter-value">—</strong></div>
+            <div class="info-row"><span data-i18n="context">Bağlam</span><strong id="context-value">—</strong></div>
+          </div>
+        </div>
+        <div class="sidebar-note" data-i18n="localNote">İstekler yapılandırdığınız yerel ArachneAISmall sunucusuna gönderilir.</div>
+        <div class="sidebar-footer">ArachneAISmall <span id="version-value">v—</span></div>
+      </aside>
+
+      <section class="chat-panel" aria-label="Model sohbeti">
+        <div id="welcome" class="welcome">
+          <div class="welcome-symbol">A</div>
+          <p class="eyebrow">ARACHNEAI · SMALL</p>
+          <h1 data-i18n="welcomeTitle">Nasıl yardımcı olabilirim?</h1>
+          <p class="welcome-copy" data-i18n="welcomeCopy">Türkçe veya İngilizce bir mesaj yazın. Yanıtlar, yüklenmiş gerçek model artifact'ından üretilir.</p>
+          <div class="suggestions">
+            <button class="suggestion" data-prompt="Bana kendini ve yeteneklerini açıkla." type="button"><span>↗</span><span data-i18n="suggest1">Kendini tanıt</span></button>
+            <button class="suggestion" data-prompt="Bir problemi adım adım nasıl analiz edersin?" type="button"><span>⌘</span><span data-i18n="suggest2">Problem çözme</span></button>
+            <button class="suggestion" data-prompt="Explain how a transformer language model works." type="button"><span>◇</span><span data-i18n="suggest3">Transformer mimarisi</span></button>
+          </div>
+        </div>
+        <div id="messages" class="messages" aria-live="polite"></div>
+        <div class="composer-wrap">
+          <form id="composer" class="composer">
+            <textarea id="prompt" rows="1" maxlength="20000" data-i18n-placeholder="promptPlaceholder" placeholder="Arachne Small'a mesaj gönder..." required></textarea>
+            <div class="composer-bottom">
+              <div class="generation-controls">
+                <label><span data-i18n="language">Dil</span>
+                  <select id="generation-language"><option value="auto">Auto</option><option value="tr">Türkçe</option><option value="en">English</option></select>
+                </label>
+                <label><span data-i18n="tokens">Yeni token</span>
+                  <select id="max-tokens"><option>128</option><option selected>256</option><option>512</option><option>1024</option></select>
+                </label>
+                <label class="temperature-control"><span data-i18n="temperature">Sıcaklık</span><input id="temperature" type="number" min="0.05" max="2" step="0.05" value="0.8"></label>
+              </div>
+              <button id="send" class="send-button" type="submit" aria-label="Send message"><span data-i18n="send">Gönder</span><span>↑</span></button>
+            </div>
+          </form>
+          <p class="disclaimer" data-i18n="disclaimer">Model çıktıları hatalı olabilir. Henüz eğitilmemiş veya yüklenmemiş model yanıt üretemez.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div id="toast" class="toast" role="status"></div>
+</body>
+</html>
