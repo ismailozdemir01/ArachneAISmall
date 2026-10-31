@@ -30,7 +30,7 @@ class TokenBlockDataset(Dataset):
             raise IndexError(index)
         start = index * self.seq_len
         chunk = self.tokens[start:start + self.seq_len + 1].to(dtype=torch.long)
-        return chunk[:-1], chunk
+        return chunk[:-1], chunk[1:]
 
 def encode_jsonl(input_path: str, output_path: str, tokenizer_path: str,
                  text_field: str = "text", eos_id: int | None = 3) -> int:
