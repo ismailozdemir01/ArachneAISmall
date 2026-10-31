@@ -30,7 +30,7 @@ def _atomic_torch_save(payload: dict, destination: Path) -> None:
         temporary.unlink(missing_ok=True)
 
 @torch.no_grad()
-def evaluate(model, loader, device, max_batches: int = 50) -> float:
+def evaluate(model, loader, device, precision: str = "fp32", max_batches: int = 50) -> float:
     was_training = model.training
     model.eval()
     losses = []
@@ -38,7 +38,10 @@ def evaluate(model, loader, device, max_batches: int = 50) -> float:
         for i, (x, y) in enumerate(loader):
             if i >= max_batches:
                 break
-            result = model(x.to(device), y.to(device))
+            x, y = x.to(device), y.to(device)
+            amp_dtype = torch.bfloat16 if precision == "bf16" else torch.float16
+            with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=precision != "fp32"):
+                result = model(x, y, activation_dtype=amp_dtype if precision != "fp32" else None)
             loss = result["loss"]
             if loss is None or not torch.isfinite(loss):
                 raise RuntimeError("Validation produced a non-finite loss.")
@@ -248,7 +251,7 @@ def train(config: Config, train_path: str, validation_path: str,
             x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
             amp_dtype = torch.bfloat16 if precision == "bf16" else torch.float16
             with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=precision != "fp32"):
-                loss = model(x, y)["loss"] / config.training.gradient_accumulation_steps
+                loss = model(x, y, activation_dtype=amp_dtype if precision != "fp32" else None)["loss"] / config.training.gradient_accumulation_steps
             if loss is None or not torch.isfinite(loss):
                 raise RuntimeError(f"Training produced a non-finite loss at step {step + 1}.")
             scaler.scale(loss).backward()
@@ -264,7 +267,7 @@ def train(config: Config, train_path: str, validation_path: str,
                   "tokens_this_step": step_tokens, "loss": accumulated, "learning_rate": lr,
                   "gradient_norm": float(grad_norm.item())}
         if (step + 1) % config.training.eval_interval == 0 or step + 1 == config.training.max_steps:
-            record["validation_loss"] = evaluate(model, val_loader, device)
+            record["validation_loss"] = evaluate(model, val_loader, device, precision=precision)
             record["validation_perplexity"] = math.exp(min(80.0, record["validation_loss"]))
         with log_path.open("a", encoding="utf-8") as log:
             log.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + "\n")
@@ -277,7 +280,7 @@ def train(config: Config, train_path: str, validation_path: str,
                                 "model_config": config.model.__dict__,
                                 "training_config": config.training.__dict__,
                                 "tokenizer_sha256": tokenizer_sha256}, path)
-    final_validation_loss = evaluate(model, val_loader, device)
+    final_validation_loss = evaluate(model, val_loader, device, precision=precision)
     final_validation_perplexity = math.exp(min(80.0, final_validation_loss))
     model_path = out / "model.safetensors"
     tokenizer_output = out / "tokenizer.model"
