@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 from .config import Config
 from .model import ArachneSmall
 from .data import TokenBlockDataset, sha256_file
-from safetensors.torch import save_file
+from safetensors.torch import save_file, load_file
 import shutil
 
 def _seed_everything(seed: int) -> None:
@@ -187,19 +187,20 @@ def train(config: Config, train_path: str, validation_path: str,
     if initial_artifact and resume:
         raise ValueError("Choose either --resume checkpoint or --initial-artifact, not both.")
     if initial_artifact:
-        from .artifacts import load_model, verify_artifact
-        summary = verify_artifact(initial_artifact)
+        from .artifacts import verify_artifact
+        initial_root = Path(initial_artifact).expanduser().resolve()
+        summary = verify_artifact(initial_root)
         if summary["tokenizer_sha256"] != tokenizer_sha256:
             raise ValueError("Initial artifact tokenizer does not match the training data.")
-        source_model, _ = load_model(initial_artifact, device)
-        source_config = source_model.config.__dict__.copy()
+        initial_config = json.loads((initial_root / "config.json").read_text(encoding="utf-8"))
+        source_config = initial_config["model"].copy()
         active_config = config.model.__dict__.copy()
-        source_config.pop("gradient_checkpointing", None)
         active_config.pop("gradient_checkpointing", None)
         if source_config != active_config:
             raise ValueError("Initial artifact architecture does not match the active model configuration.")
-        model.load_state_dict(source_model.state_dict(), strict=True)
-        del source_model
+        initial_weights = load_file(str(initial_root / initial_config["weights"]["file"]), device=str(device))
+        model.load_state_dict(initial_weights, strict=True, assign=True)
+        del initial_weights
     decay, no_decay = [], []
     for name, param in model.named_parameters():
         if param.requires_grad:
