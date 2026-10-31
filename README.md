@@ -83,6 +83,7 @@ API endpoints:
 - `GET /api/health`: process health.
 - `GET /api/status`: loaded artifact, device and model dimensions.
 - `POST /api/generate`: text generation with bounded prompt and generation parameters.
+- `POST /api/feedback`: local correction intake with explicit consent.
 - `GET /docs`: interactive OpenAPI documentation.
 
 The model is loaded once at startup and inference requests are serialized per process to prevent concurrent generation from exhausting accelerator memory. See [docs/INFERENCE_API.md](docs/INFERENCE_API.md) for the API contract and deployment notes.
