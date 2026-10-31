@@ -61,7 +61,8 @@ def _atomic_json_save(payload: dict, destination: Path) -> None:
 def _atomic_safetensors_save(state: dict, destination: Path) -> None:
     temporary = destination.with_name(destination.name + ".tmp")
     try:
-        save_file({name: tensor.detach().cpu().contiguous() for name, tensor in state.items()}, str(temporary))
+        # Clone tensors so tied embedding/output weights have independent storage in the file.
+        save_file({name: tensor.detach().cpu().contiguous().clone() for name, tensor in state.items()}, str(temporary))
         os.replace(temporary, destination)
     finally:
         temporary.unlink(missing_ok=True)
@@ -106,6 +107,8 @@ def train(config: Config, train_path: str, validation_path: str,
     tokenizer_sha256 = train_metadata.get("tokenizer_sha256")
     if not tokenizer_sha256 or tokenizer_sha256 != validation_metadata.get("tokenizer_sha256"):
         raise ValueError("Train and validation streams must use the exact same tokenizer model.")
+    if train_metadata.get("eos_id") != validation_metadata.get("eos_id"):
+        raise ValueError("Train and validation streams must use the same EOS token ID.")
     if sha256_file(tokenizer_file) != tokenizer_sha256:
         raise ValueError("Provided tokenizer file does not match the token dataset provenance.")
     train_max = int(train_ds.tokens.max().item())
@@ -117,7 +120,10 @@ def train(config: Config, train_path: str, validation_path: str,
             f"Token ID {max(train_max, validation_max)} exceeds model vocabulary "
             f"size {config.model.vocab_size}; train tokenizer and model config must match."
         )
+    data_generator = torch.Generator()
+    data_generator.manual_seed(config.training.seed)
     train_loader = DataLoader(train_ds, batch_size=config.training.batch_size, shuffle=True,
+                              generator=data_generator,
                               num_workers=config.training.num_workers,
                               drop_last=(len(train_ds) >= config.training.batch_size),
                               pin_memory=device.type == "cuda")
