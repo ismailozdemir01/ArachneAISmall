@@ -1,3 +1,4 @@
+import math
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -100,12 +101,16 @@ class ArachneSmall(nn.Module):
     def forward(self, input_ids: torch.Tensor, labels: torch.Tensor | None = None):
         if input_ids.ndim != 2 or input_ids.size(1) < 2:
             raise ValueError("input_ids must have shape [batch, sequence] with sequence >= 2.")
+        if input_ids.dtype not in (torch.int32, torch.int64):
+            raise TypeError("input_ids must use an integer token dtype.")
         if input_ids.size(1) > self.config.max_seq_len:
             raise ValueError("Sequence exceeds configured max_seq_len.")
         if torch.any(input_ids < 0) or torch.any(input_ids >= self.config.vocab_size):
             raise ValueError("input_ids contain token IDs outside the configured vocabulary.")
         if labels is not None and labels.shape != input_ids.shape:
             raise ValueError("labels must have the same [batch, sequence] shape as input_ids.")
+        if labels is not None and labels.dtype != torch.int64:
+            raise TypeError("labels must use torch.int64 token IDs.")
         x = self.token_embedding(input_ids)
         for layer in self.layers:
             if self.training and self.config.gradient_checkpointing:
@@ -125,8 +130,12 @@ class ArachneSmall(nn.Module):
                  eos_token_id: int | None = None) -> torch.Tensor:
         if input_ids.ndim != 2 or input_ids.size(1) < 1:
             raise ValueError("input_ids must have shape [batch, sequence].")
-        if max_new_tokens < 0 or temperature <= 0:
-            raise ValueError("Generation arguments are invalid.")
+        if not isinstance(max_new_tokens, int) or isinstance(max_new_tokens, bool) or max_new_tokens < 0:
+            raise ValueError("max_new_tokens must be a non-negative integer.")
+        if not math.isfinite(temperature) or temperature <= 0:
+            raise ValueError("temperature must be finite and positive.")
+        if eos_token_id is not None and not 0 <= eos_token_id < self.config.vocab_size:
+            raise ValueError("eos_token_id is outside the configured vocabulary.")
         if top_k is not None and top_k < 0:
             raise ValueError("top_k must be non-negative or None.")
         self.eval()
