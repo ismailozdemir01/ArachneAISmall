@@ -1,4 +1,4 @@
-import math, random, json, os
+import math, random, json
 from pathlib import Path
 import torch
 from torch.utils.data import DataLoader
@@ -46,16 +46,15 @@ def train(config: Config, train_path: str, validation_path: str,
     if not len(train_ds) or not len(val_ds):
         raise RuntimeError("Train and validation datasets must each contain at least one full token block.")
     train_loader = DataLoader(train_ds, batch_size=config.training.batch_size, shuffle=True,
-                              num_workers=config.training.num_workers, drop_last=True,
+                              num_workers=config.training.num_workers, drop_last=False,
                               pin_memory=device.type == "cuda")
     val_loader = DataLoader(val_ds, batch_size=config.training.batch_size, shuffle=False,
                             num_workers=config.training.num_workers)
     model = ArachneSmall(config.model).to(device)
     decay, no_decay = [], []
     for name, param in model.named_parameters():
-        if not param.requires_grad:
-            continue
-        (no_decay if param.ndim < 2 or "norm" in name else decay).append(param)
+        if param.requires_grad:
+            (no_decay if param.ndim < 2 or "norm" in name else decay).append(param)
     optimizer = torch.optim.AdamW([
         {"params": decay, "weight_decay": config.training.weight_decay},
         {"params": no_decay, "weight_decay": 0.0},
@@ -68,7 +67,7 @@ def train(config: Config, train_path: str, validation_path: str,
             raise ValueError("Checkpoint model configuration does not match the active configuration.")
         model.load_state_dict(checkpoint["model"])
         optimizer.load_state_dict(checkpoint["optimizer"])
-        start_step = int(checkpoint["step"]) + 1
+        start_step = int(checkpoint["step"])
         if "scaler" in checkpoint:
             scaler.load_state_dict(checkpoint["scaler"])
     out = Path(config.training.output_dir)
@@ -91,8 +90,7 @@ def train(config: Config, train_path: str, validation_path: str,
                 x, y = next(iterator)
             x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
             amp_dtype = torch.bfloat16 if precision == "bf16" else torch.float16
-            with torch.autocast(device_type=device.type, dtype=amp_dtype,
-                                enabled=precision != "fp32"):
+            with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=precision != "fp32"):
                 loss = model(x, y)["loss"] / config.training.gradient_accumulation_steps
             scaler.scale(loss).backward()
             accumulated += float(loss.detach().item())
