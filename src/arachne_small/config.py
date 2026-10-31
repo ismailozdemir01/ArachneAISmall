@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass\nimport math
 from pathlib import Path
 from typing import Any
 import yaml
@@ -28,8 +28,10 @@ class ModelConfig:
             raise ValueError("n_heads must be divisible by n_kv_heads.")
         if (self.d_model // self.n_heads) % 2:
             raise ValueError("RoPE head dimension must be even.")
-        if self.rope_theta <= 0 or self.norm_eps <= 0:
-            raise ValueError("rope_theta and norm_eps must be positive.")
+        if not math.isfinite(self.rope_theta) or not math.isfinite(self.norm_eps) or self.rope_theta <= 0 or self.norm_eps <= 0:
+            raise ValueError("rope_theta and norm_eps must be finite and positive.")
+        if not isinstance(self.tie_embeddings, bool) or not isinstance(self.gradient_checkpointing, bool):
+            raise ValueError("tie_embeddings and gradient_checkpointing must be booleans.")
 
     @property
     def head_dim(self) -> int:
@@ -69,6 +71,9 @@ class TrainingConfig:
             raise ValueError("Batch, accumulation, step and interval values must be positive integers.")
         if self.warmup_steps < 0 or self.warmup_steps > self.max_steps or self.num_workers < 0 or self.seed < 0:
             raise ValueError("warmup_steps must be between zero and max_steps; num_workers and seed must be non-negative.")
+        numeric_values = (self.learning_rate, self.min_learning_rate, self.weight_decay, self.grad_clip)
+        if any(not math.isfinite(value) for value in numeric_values):
+            raise ValueError("Training numeric settings must be finite.")
         if self.learning_rate <= 0 or self.min_learning_rate < 0 or self.min_learning_rate > self.learning_rate:
             raise ValueError("Learning rates are invalid.")
         if self.weight_decay < 0 or self.grad_clip <= 0:
