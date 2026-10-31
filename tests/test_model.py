@@ -73,3 +73,17 @@ def test_generation_rejects_non_finite_temperature():
         assert "finite" in str(exc)
     else:
         raise AssertionError("Non-finite temperature was accepted.")
+
+def test_rmsnorm_preserves_low_precision_activation_dtype():
+    from arachne_small.model import RMSNorm
+
+    norm = RMSNorm(32, 1e-5)
+    values = torch.randn(2, 4, 32, dtype=torch.bfloat16, requires_grad=True)
+    output = norm(values)
+    assert output.dtype == torch.bfloat16
+    assert torch.isfinite(output).all()
+    output.float().square().mean().backward()
+    assert values.grad is not None
+    assert torch.isfinite(values.grad).all()
+    assert norm.weight.grad is not None
+    assert torch.isfinite(norm.weight.grad).all()
