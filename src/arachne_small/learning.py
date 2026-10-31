@@ -282,6 +282,8 @@ def run_learning_cycle(*, database: str | Path, base_artifact: str | Path,
     if manifest["records"] == 0:
         raise RuntimeError("No new consented feedback meets the minimum rating; no training was started.")
     train_tokens = work / "feedback-train.bin"
+    train_tokens.with_name(train_tokens.name + ".json").unlink(missing_ok=True)
+    train_tokens.unlink(missing_ok=True)
     encode_jsonl(str(export_path), str(train_tokens), str(tokenizer_path), "text", tokenizer.eos_id())
     config = load_config(config_path)
     training_output = work / "candidate"
