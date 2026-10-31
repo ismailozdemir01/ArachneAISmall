@@ -98,7 +98,8 @@ class ArachneSmall(nn.Module):
         elif isinstance(module, nn.Embedding):
             nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, input_ids: torch.Tensor, labels: torch.Tensor | None = None):
+    def forward(self, input_ids: torch.Tensor, labels: torch.Tensor | None = None,
+                activation_dtype: torch.dtype | None = None):
         if input_ids.ndim != 2 or input_ids.size(1) < 2:
             raise ValueError("input_ids must have shape [batch, sequence] with sequence >= 2.")
         if input_ids.dtype not in (torch.int32, torch.int64):
@@ -112,6 +113,10 @@ class ArachneSmall(nn.Module):
         if labels is not None and labels.dtype != torch.int64:
             raise TypeError("labels must use torch.int64 token IDs.")
         x = self.token_embedding(input_ids)
+        if activation_dtype is not None:
+            if activation_dtype not in (torch.float16, torch.bfloat16):
+                raise ValueError("activation_dtype must be float16, bfloat16 or None.")
+            x = x.to(dtype=activation_dtype)
         for layer in self.layers:
             if self.training and self.config.gradient_checkpointing:
                 x = checkpoint(layer, x, use_reentrant=False)
