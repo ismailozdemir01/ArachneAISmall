@@ -1,6 +1,7 @@
 import torch
 from torch import nn
-from torch.nn import functional as F\nfrom torch.utils.checkpoint import checkpoint
+from torch.nn import functional as F
+from torch.utils.checkpoint import checkpoint
 from .config import ModelConfig
 
 class RMSNorm(nn.Module):
