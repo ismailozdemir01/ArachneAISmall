@@ -4,7 +4,7 @@ import sentencepiece as spm
 from .config import load_config
 from .data import encode_jsonl
 from .trainer import train
-from .corpus import prepare_corpus
+from .corpus import prepare_corpus, export_text
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="arachne-small")
@@ -24,6 +24,10 @@ def main() -> None:
     run.add_argument("--train-data", required=True)
     run.add_argument("--validation-data", required=True)
     run.add_argument("--resume")
+    export = commands.add_parser("export-text")
+    export.add_argument("--input", required=True)
+    export.add_argument("--output", required=True)
+    export.add_argument("--text-field", default="text")
     split = commands.add_parser("prepare-corpus")
     split.add_argument("--input", required=True)
     split.add_argument("--output-dir", required=True)
@@ -48,6 +52,9 @@ def main() -> None:
     elif args.command == "train":
         path = train(load_config(args.config), args.train_data, args.validation_data, args.resume)
         print(f"Training completed. Model artifact: {path}")
+    elif args.command == "export-text":
+        count = export_text(args.input, args.output, args.text_field)
+        print(f"Exported {count:,} documents to {args.output}")
     elif args.command == "prepare-corpus":
         manifest = prepare_corpus(args.input, args.output_dir, args.text_field,
                                   args.validation_fraction, args.seed, args.source, args.license)
