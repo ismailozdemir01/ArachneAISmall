@@ -13,7 +13,7 @@ def main() -> None:
     tok.add_argument("--vocab-size", type=int, default=32000)
     prep = commands.add_parser("prepare-data")
     prep.add_argument("--input", required=True)
-    prep.add_argument("--output", required=True)
+    prep.add_argument("--output", required=True, help="Output raw token stream path; use .bin")
     prep.add_argument("--tokenizer", required=True)
     prep.add_argument("--text-field", default="text")
     prep.add_argument("--eos-id", type=int, default=3)
@@ -30,10 +30,10 @@ def main() -> None:
             parser.error("vocab-size must be at least 256")
         spm.SentencePieceTrainer.train(input=args.input, model_prefix=args.output_prefix,
             vocab_size=args.vocab_size, model_type="bpe", character_coverage=0.9999,
-            pad_id=0, unk_id=1, bos_id=2, eos_id=3, hard_vocab_limit=False)
+            pad_id=0, unk_id=1, bos_id=2, eos_id=3, hard_vocab_limit=True)
     elif args.command == "prepare-data":
         total = encode_jsonl(args.input, args.output, args.tokenizer, args.text_field, args.eos_id)
-        print(f"Encoded {total} tokens into {args.output}")
+        print(f"Encoded {total:,} tokens into binary stream {args.output}")
     elif args.command == "train":
         path = train(load_config(args.config), args.train_data, args.validation_data, args.resume)
         print(f"Training completed. Model artifact: {path}")
