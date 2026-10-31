@@ -104,7 +104,8 @@ def _atomic_safetensors_save(state: dict, destination: Path) -> None:
 
 
 def train(config: Config, train_path: str, validation_path: str,
-          tokenizer_path: str, resume: str | None = None) -> Path:
+          tokenizer_path: str, resume: str | None = None,
+          initial_artifact: str | None = None) -> Path:
     config.model.validate()
     config.training.validate()
     _seed_everything(config.training.seed)
@@ -183,6 +184,18 @@ def train(config: Config, train_path: str, validation_path: str,
     val_loader = DataLoader(val_ds, batch_size=config.training.batch_size, shuffle=False,
                             num_workers=config.training.num_workers, pin_memory=device.type == "cuda")
     model = ArachneSmall(config.model).to(device)
+    if initial_artifact and resume:
+        raise ValueError("Choose either --resume checkpoint or --initial-artifact, not both.")
+    if initial_artifact:
+        from .artifacts import load_model, verify_artifact
+        summary = verify_artifact(initial_artifact)
+        if summary["tokenizer_sha256"] != tokenizer_sha256:
+            raise ValueError("Initial artifact tokenizer does not match the training data.")
+        source_model, _ = load_model(initial_artifact, device)
+        if source_model.config != config.model:
+            raise ValueError("Initial artifact architecture does not match the active model configuration.")
+        model.load_state_dict(source_model.state_dict(), strict=True)
+        del source_model
     decay, no_decay = [], []
     for name, param in model.named_parameters():
         if param.requires_grad:
@@ -280,7 +293,8 @@ def train(config: Config, train_path: str, validation_path: str,
                                 "optimizer": optimizer.state_dict(), "scaler": scaler.state_dict(),
                                 "model_config": config.model.__dict__,
                                 "training_config": config.training.__dict__,
-                                "tokenizer_sha256": tokenizer_sha256}, path)
+                                "tokenizer_sha256": tokenizer_sha256,
+                                "initial_artifact": initial_artifact}, path)
     final_validation_loss = evaluate(model, val_loader, device, precision=precision)
     final_validation_perplexity = math.exp(min(80.0, final_validation_loss))
     model_path = out / "model.safetensors"
