@@ -46,7 +46,11 @@ Example configuration:
   "tokenizer": {
     "file": "tokenizer.model",
     "sha256": "<sha256>",
-    "vocab_size": 32000
+    "vocab_size": 32000,
+    "pad_id": 0,
+    "unk_id": 1,
+    "bos_id": 2,
+    "eos_id": 3
   },
   "weights": {
     "file": "model.safetensors",
@@ -56,6 +60,8 @@ Example configuration:
 ```
 
 ## Loader requirements
+
+Before loading a package in the training repository, run `arachne-small verify-artifact --path <artifact-directory>`. This command checks checksums, tokenizer vocabulary/special IDs, architecture parameter count, tensor names, and tensor shapes without materializing all model weights.
 
 A compatible runtime must:
 
