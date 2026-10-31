@@ -27,7 +27,7 @@ def _write_tokens(path, token_ids, tokenizer_hash, vocab_size, special_tokens):
 
 def test_tiny_training_writes_versioned_model_and_checkpoint(tmp_path):
     from safetensors.torch import load_file
-    from arachne_small.artifacts import verify_artifact
+    from arachne_small.artifacts import verify_artifact, load_model
 
     tokenizer_prefix = tmp_path / "tokenizer"
     tokenizer_corpus = tmp_path / "tokenizer-corpus.txt"
@@ -76,7 +76,10 @@ def test_tiny_training_writes_versioned_model_and_checkpoint(tmp_path):
     artifact_config = json.loads((tmp_path / "run" / "config.json").read_text(encoding="utf-8"))
     manifest = json.loads((tmp_path / "run" / "artifact-manifest.json").read_text(encoding="utf-8"))
     verified = verify_artifact(tmp_path / "run")
+    loaded_model, loaded_tokenizer = load_model(tmp_path / "run")
 
+    assert loaded_model.config.vocab_size == vocab_size
+    assert loaded_tokenizer.vocab_size() == vocab_size
     assert verified["parameter_count"] == config.model.parameter_count()
     assert "token_embedding.weight" in artifact
     assert artifact_config["format_version"] == 1
