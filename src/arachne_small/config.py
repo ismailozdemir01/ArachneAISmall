@@ -34,16 +34,14 @@ class ModelConfig:
         return self.d_model // self.n_heads
 
     def parameter_count(self) -> int:
-        # Exact count for this implementation, including norms and embeddings.
-        h, kv, d, f = self.n_heads, self.n_kv_heads, self.d_model, self.intermediate_size
-        head_dim = d // h
-        attention = d * (h * head_dim + 2 * kv * head_dim + h * head_dim) + d + (h * head_dim + 2 * kv * head_dim + h * head_dim)
-        mlp = 3 * d * f + 3 * f
-        norms = 2 * d + d
-        layer = attention + mlp + norms
-        embedding = self.vocab_size * d
+        d, f = self.d_model, self.intermediate_size
+        kv_width = self.n_kv_heads * self.head_dim
+        attention = 2 * d * d + 2 * d * kv_width
+        mlp = 3 * d * f
+        layer_norms = 2 * d
+        embeddings = self.vocab_size * d
         output = 0 if self.tie_embeddings else self.vocab_size * d
-        return embedding + output + self.n_layers * layer + d
+        return embeddings + output + self.n_layers * (attention + mlp + layer_norms) + d
 
 @dataclass(frozen=True)
 class TrainingConfig:
