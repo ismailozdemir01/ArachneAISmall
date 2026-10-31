@@ -100,6 +100,10 @@ ArachneAIOpen ile ortak artifact sözleşmesi [docs/ARTIFACT_FORMAT.md](docs/ART
 - [Dataset Policy](docs/DATASET_POLICY.md)
 - [Artifact Format](docs/ARTIFACT_FORMAT.md)
 
+## Kod lisansı
+
+Bu depoya henüz bir kod lisansı eklenmedi. Depoyu public yapmak, kodun yeniden kullanılmasına, değiştirilmesine veya dağıtılmasına otomatik izin vermez. Açık kaynak lisansı olarak tanımlamadan önce depo sahibinin lisans seçimi yapılmalıdır.
+
 ## Yayın durumu
 
 Bu depo model mimarisini, veri hazırlama hattını, tokenizer üretimini, eğitim motorunu, checkpoint yönetimini ve inference artifact paketlemesini içerir. Şu anda eğitilmiş ağırlık veya eğitim korpusu içermez. Eğitim, yerel testler, doğrulama metrikleri ve donanım performans ölçümleri tamamlanmadan eğitilmiş model sürümü veya kalite iddiası yayımlanmayacaktır.
