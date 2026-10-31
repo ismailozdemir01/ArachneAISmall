@@ -130,7 +130,7 @@ def train(config: Config, train_path: str, validation_path: str,
             record["validation_loss"] = evaluate(model, val_loader, device)
             record["validation_perplexity"] = math.exp(min(20.0, record["validation_loss"]))
         with log_path.open("a", encoding="utf-8") as log:
-            log.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + "\\n")
+            log.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + "\n")
             log.flush()
         if (step + 1) % config.training.save_interval == 0 or step + 1 == config.training.max_steps:
             path = out / "checkpoints" / f"step-{step + 1:08d}.pt"
