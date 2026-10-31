@@ -25,7 +25,7 @@ def test_parameter_counter_matches_actual_parameters():
 def test_forward_computes_next_token_loss():
     model = ArachneSmall(small_config())
     input_ids = torch.randint(0, 64, (2, 8))
-    labels = torch.randint(0, 64, (2, 9))
+    labels = torch.randint(0, 64, (2, 8))
     result = model(input_ids, labels)
     assert result["logits"].shape == (2, 8, 64)
     assert result["loss"] is not None
