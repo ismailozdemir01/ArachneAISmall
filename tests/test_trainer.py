@@ -24,7 +24,11 @@ def _write_tokens(path, token_ids, tokenizer_hash):
 
 
 def test_tiny_training_writes_versioned_model_and_checkpoint(tmp_path):
-    tokenizer_hash = "a" * 64
+    from safetensors.torch import load_file
+
+    tokenizer_path = tmp_path / "tokenizer.model"
+    tokenizer_path.write_bytes(b"tiny-tokenizer-artifact")
+    tokenizer_hash = hashlib.sha256(tokenizer_path.read_bytes()).hexdigest()
     train_path = tmp_path / "train.bin"
     validation_path = tmp_path / "validation.bin"
     _write_tokens(train_path, [index % 16 for index in range(80)], tokenizer_hash)
@@ -43,10 +47,15 @@ def test_tiny_training_writes_versioned_model_and_checkpoint(tmp_path):
         ),
     )
 
-    artifact_path = train(config, str(train_path), str(validation_path))
-    artifact = torch.load(artifact_path, map_location="cpu", weights_only=True)
+    artifact_path = train(config, str(train_path), str(validation_path), str(tokenizer_path))
+    artifact = load_file(str(artifact_path))
+    artifact_config = json.loads((tmp_path / "run" / "config.json").read_text(encoding="utf-8"))
+    manifest = json.loads((tmp_path / "run" / "artifact-manifest.json").read_text(encoding="utf-8"))
 
-    assert artifact["artifact_version"] == 1
-    assert artifact["tokenizer_sha256"] == tokenizer_hash
+    assert "token_embedding.weight" in artifact
+    assert artifact_config["format_version"] == 1
+    assert artifact_config["tokenizer"]["sha256"] == tokenizer_hash
+    assert manifest["weights_sha256"] == hashlib.sha256(artifact_path.read_bytes()).hexdigest()
+    assert (tmp_path / "run" / "tokenizer.model").read_bytes() == tokenizer_path.read_bytes()
     assert (tmp_path / "run" / "checkpoints" / "step-00000001.pt").is_file()
     assert artifact["model"]
