@@ -56,15 +56,15 @@ def _truncate_training_log(path: Path, checkpoint_step: int) -> None:
         return
     temporary = path.with_name(path.name + ".tmp")
     try:
+        file_size = path.stat().st_size
         with path.open("r", encoding="utf-8") as source, temporary.open("w", encoding="utf-8") as target:
-            lines = source.readlines()
-            for index, line in enumerate(lines):
+            for index, line in enumerate(source):
                 if not line.strip():
                     continue
                 try:
                     record = json.loads(line)
                 except json.JSONDecodeError:
-                    if index == len(lines) - 1 and not line.endswith("\n"):
+                    if source.tell() == file_size and not line.endswith("\n"):
                         break
                     raise ValueError(f"Corrupt training log at {path}:{index + 1}")
                 if not isinstance(record, dict) or not isinstance(record.get("step"), int):
