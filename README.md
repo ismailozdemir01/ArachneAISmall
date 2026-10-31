@@ -91,6 +91,12 @@ The model is loaded once at startup and inference requests are serialized per pr
 
 See [docs/MODEL_CARD.md](docs/MODEL_CARD.md) for the model's release status and evaluation requirements, and [docs/DATASET_POLICY.md](docs/DATASET_POLICY.md) for dataset intake and provenance rules.
 
+## Controlled continual learning
+
+The repository includes an explicit-consent, local SQLite feedback store and an end-to-end continual-learning command. Eligible corrections are encoded with the verified base artifact's tokenizer; candidate training initializes from that artifact rather than random weights. A candidate is evaluated against the baseline on the same fixed validation stream and is rejected on validation-loss regression by default. Passing candidates are stored as immutable content-addressed releases behind an atomic current-version pointer, with verified rollback support. There is no hidden telemetry or automatic collection of raw prompts. See [Controlled Continual Learning](docs/CONTINUAL_LEARNING.md).
+
+This pipeline requires a trained base artifact and a matching validation token stream. No trained weights are included in the repository; the pipeline is source-complete but has not been executed on the user's training hardware.
+
 ## Code license
 
 No code license has been selected in this repository. Making the repository public does not by itself grant permission to reuse, modify, or redistribute its code. Add the owner's chosen license before describing the project as open source.
