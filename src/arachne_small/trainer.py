@@ -61,6 +61,15 @@ def train(config: Config, train_path: str, validation_path: str,
     val_ds = TokenBlockDataset(validation_path, config.model.max_seq_len)
     if not len(train_ds) or not len(val_ds):
         raise RuntimeError("Train and validation datasets must each contain at least one full token block.")
+    train_max = int(train_ds.tokens.max().item())
+    validation_max = int(val_ds.tokens.max().item())
+    if min(int(train_ds.tokens.min().item()), int(val_ds.tokens.min().item())) < 0:
+        raise ValueError("Token files cannot contain negative token IDs.")
+    if max(train_max, validation_max) >= config.model.vocab_size:
+        raise ValueError(
+            f"Token ID {max(train_max, validation_max)} exceeds model vocabulary "
+            f"size {config.model.vocab_size}; train tokenizer and model config must match."
+        )
     train_loader = DataLoader(train_ds, batch_size=config.training.batch_size, shuffle=True,
                               num_workers=config.training.num_workers, drop_last=False,
                               pin_memory=device.type == "cuda")
@@ -134,10 +143,11 @@ def train(config: Config, train_path: str, validation_path: str,
             log.flush()
         if (step + 1) % config.training.save_interval == 0 or step + 1 == config.training.max_steps:
             path = out / "checkpoints" / f"step-{step + 1:08d}.pt"
-            _atomic_torch_save({"step": step + 1, "model": model.state_dict(),
+            _atomic_torch_save({"artifact_version": 1, "step": step + 1, "model": model.state_dict(),
                                 "optimizer": optimizer.state_dict(), "scaler": scaler.state_dict(),
                                 "model_config": config.model.__dict__,
                                 "training_config": config.training.__dict__}, path)
     final = out / "model.pt"
-    _atomic_torch_save({"model": model.state_dict(), "model_config": config.model.__dict__}, final)
+    _atomic_torch_save({"artifact_version": 1, "model": model.state_dict(),
+                        "model_config": config.model.__dict__}, final)
     return final
