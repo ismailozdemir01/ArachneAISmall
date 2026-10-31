@@ -64,17 +64,22 @@ class Runtime:
                 })
             return result
 
-    def generate(self, prompt: str, max_new_tokens: int, temperature: float,
-                 top_k: int, language: Literal["auto", "tr", "en"]) -> dict:
+    def generate(self, prompt: str, history: list["ChatMessage"], max_new_tokens: int,
+                 temperature: float, top_k: int,
+                 language: Literal["auto", "tr", "en"]) -> dict:
         with self.lock:
             if self.model is None or self.tokenizer is None:
                 raise RuntimeError("No verified model artifact is loaded.")
-            text = prompt.strip()
-            if not text:
+            current_prompt = prompt.strip()
+            if not current_prompt:
                 raise ValueError("Prompt cannot be empty.")
-            if language != "auto":
-                prefix = "Türkçe: " if language == "tr" else "English: "
-                text = prefix + text
+            language_prefix = "Türkçe konuş. " if language == "tr" else "Respond in English. " if language == "en" else ""
+            turns = []
+            for message in history:
+                role = "User" if message.role == "user" else "Assistant"
+                turns.append(f"{role}: {message.content.strip()}")
+            turns.append(f"User: {current_prompt}")
+            text = language_prefix + "\\n".join(turns) + "\\nAssistant:"
             token_ids = self.tokenizer.encode(text, out_type=int, add_bos=True)
             if not token_ids:
                 raise ValueError("Prompt produced no tokens.")
@@ -100,9 +105,23 @@ class Runtime:
             }
 
 
+class ChatMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=4_000)
+
+    @field_validator("content")
+    @classmethod
+    def message_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Conversation messages cannot be blank.")
+        return value
+
+
 class GenerateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     prompt: str = Field(min_length=1, max_length=MAX_PROMPT_CHARS)
+    history: list[ChatMessage] = Field(default_factory=list, max_length=20)
     max_new_tokens: int = Field(default=256, ge=1, le=1024)
     temperature: float = Field(default=0.8, ge=0.05, le=2.0)
     top_k: int = Field(default=50, ge=0, le=500)
@@ -113,6 +132,13 @@ class GenerateRequest(BaseModel):
     def prompt_not_blank(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("Prompt cannot be blank.")
+        return value
+
+    @field_validator("history")
+    @classmethod
+    def history_within_character_budget(cls, value: list[ChatMessage]) -> list[ChatMessage]:
+        if sum(len(message.content) for message in value) > MAX_PROMPT_CHARS:
+            raise ValueError("Conversation history exceeds the total character budget.")
         return value
 
 
@@ -161,8 +187,8 @@ def generate(payload: GenerateRequest, request: Request) -> dict:
         raise HTTPException(status_code=503, detail="No trained model artifact is loaded. Set ARACHNE_SMALL_ARTIFACT to a verified artifact directory.")
     try:
         result = runtime.generate(
-            payload.prompt, payload.max_new_tokens, payload.temperature,
-            payload.top_k, payload.language,
+            payload.prompt, payload.history, payload.max_new_tokens,
+            payload.temperature, payload.top_k, payload.language,
         )
         return {"model": "arachne-small", **result}
     except ValueError as exc:
