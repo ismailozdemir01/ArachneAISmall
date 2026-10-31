@@ -104,8 +104,12 @@ class ArachneSmall(nn.Module):
 
     def forward(self, input_ids: torch.Tensor, labels: torch.Tensor | None = None,
                 activation_dtype: torch.dtype | None = None):
-        if input_ids.ndim != 2 or input_ids.size(1) < 2:
-            raise ValueError("input_ids must have shape [batch, sequence] with sequence >= 2.")
+        minimum_sequence = 2 if labels is not None else 1
+        if input_ids.ndim != 2 or input_ids.size(0) < 1 or input_ids.size(1) < minimum_sequence:
+            raise ValueError(
+                "input_ids must have shape [batch, sequence] with a non-empty batch "
+                f"and sequence >= {minimum_sequence}."
+            )
         if input_ids.dtype not in (torch.int32, torch.int64):
             raise TypeError("input_ids must use an integer token dtype.")
         if input_ids.size(1) > self.config.max_seq_len:
@@ -141,8 +145,12 @@ class ArachneSmall(nn.Module):
     def generate(self, input_ids: torch.Tensor, max_new_tokens: int = 128,
                  temperature: float = 0.8, top_k: int | None = 50,
                  eos_token_id: int | None = None) -> torch.Tensor:
-        if input_ids.ndim != 2 or input_ids.size(1) < 1:
-            raise ValueError("input_ids must have shape [batch, sequence].")
+        if input_ids.ndim != 2 or input_ids.size(0) < 1 or input_ids.size(1) < 1:
+            raise ValueError("input_ids must have shape [non-empty batch, non-empty sequence].")
+        if input_ids.dtype not in (torch.int32, torch.int64):
+            raise TypeError("input_ids must use an integer token dtype.")
+        if torch.any(input_ids < 0) or torch.any(input_ids >= self.config.vocab_size):
+            raise ValueError("input_ids contain token IDs outside the configured vocabulary.")
         if not isinstance(max_new_tokens, int) or isinstance(max_new_tokens, bool) or max_new_tokens < 0:
             raise ValueError("max_new_tokens must be a non-negative integer.")
         if not isinstance(temperature, (int, float)) or isinstance(temperature, bool) or not math.isfinite(temperature) or temperature <= 0:
