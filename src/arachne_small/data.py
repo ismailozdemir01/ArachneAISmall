@@ -1,8 +1,17 @@
+import hashlib
 import json
+import os
 import struct
 from pathlib import Path
 import torch
 from torch.utils.data import Dataset
+
+def sha256_file(path: str | Path) -> str:
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 class TokenBlockDataset(Dataset):
     """Memory-mapped uint32 token stream; each sample is one fixed-length next-token window."""
@@ -34,41 +43,72 @@ class TokenBlockDataset(Dataset):
 
 def encode_jsonl(input_path: str, output_path: str, tokenizer_path: str,
                  text_field: str = "text", eos_id: int | None = 3) -> int:
-    """Encode JSONL documents to a little-endian uint32 token stream without holding the corpus in RAM."""
+    """Encode JSONL documents to an atomic little-endian uint32 stream plus provenance metadata."""
     import sentencepiece as spm
     source = Path(input_path)
     target = Path(output_path)
+    tokenizer_file = Path(tokenizer_path)
     if not source.is_file():
         raise FileNotFoundError(source)
+    if not tokenizer_file.is_file():
+        raise FileNotFoundError(tokenizer_file)
     if not text_field:
         raise ValueError("text_field must not be empty.")
-    tokenizer = spm.SentencePieceProcessor(model_file=tokenizer_path)
+    tokenizer = spm.SentencePieceProcessor(model_file=str(tokenizer_file))
     if eos_id is not None and not 0 <= eos_id < tokenizer.vocab_size():
         raise ValueError(f"eos_id {eos_id} is outside tokenizer vocabulary.")
     target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_name(target.name + ".tmp")
+    metadata_path = target.with_name(target.name + ".json")
+    metadata_temporary = metadata_path.with_name(metadata_path.name + ".tmp")
+    input_digest = hashlib.sha256()
+    token_digest = hashlib.sha256()
     total = 0
-    with source.open("r", encoding="utf-8") as src, target.open("wb") as dst:
-        for line_no, line in enumerate(src, 1):
-            if not line.strip():
-                continue
-            try:
-                row = json.loads(line)
-            except json.JSONDecodeError as exc:
-                raise ValueError(f"Invalid JSON at {source}:{line_no}: {exc}") from exc
-            if not isinstance(row, dict):
-                raise ValueError(f"Each JSONL row must be an object at {source}:{line_no}")
-            text = row.get(text_field)
-            if not isinstance(text, str) or not text.strip():
-                continue
-            ids = tokenizer.encode(text, out_type=int)
-            if eos_id is not None:
-                ids.append(eos_id)
-            if any(token < 0 or token >= tokenizer.vocab_size() for token in ids):
-                raise ValueError(f"Tokenizer produced an out-of-range token at {source}:{line_no}")
-            if ids:
-                dst.write(struct.pack(f"<{len(ids)}I", *ids))
-                total += len(ids)
-    if total == 0:
-        target.unlink(missing_ok=True)
-        raise ValueError(f"No usable text documents were found in {source}")
+    try:
+        with source.open("rb") as src, temporary.open("wb") as dst:
+            for line_no, raw_line in enumerate(src, 1):
+                input_digest.update(raw_line)
+                if not raw_line.strip():
+                    continue
+                try:
+                    row = json.loads(raw_line)
+                except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                    raise ValueError(f"Invalid UTF-8 JSONL at {source}:{line_no}: {exc}") from exc
+                if not isinstance(row, dict):
+                    raise ValueError(f"Each JSONL row must be an object at {source}:{line_no}")
+                text = row.get(text_field)
+                if not isinstance(text, str) or not text.strip():
+                    continue
+                ids = tokenizer.encode(text, out_type=int)
+                if eos_id is not None:
+                    ids.append(eos_id)
+                if any(token < 0 or token >= tokenizer.vocab_size() for token in ids):
+                    raise ValueError(f"Tokenizer produced an out-of-range token at {source}:{line_no}")
+                if ids:
+                    encoded = struct.pack(f"<{len(ids)}I", *ids)
+                    dst.write(encoded)
+                    token_digest.update(encoded)
+                    total += len(ids)
+        if total == 0:
+            raise ValueError(f"No usable text documents were found in {source}")
+        metadata = {
+            "format_version": 1,
+            "token_format": "little-endian-uint32",
+            "token_count": total,
+            "token_file": target.name,
+            "token_file_sha256": token_digest.hexdigest(),
+            "input_file": source.name,
+            "input_sha256": input_digest.hexdigest(),
+            "tokenizer_file": tokenizer_file.name,
+            "tokenizer_sha256": sha256_file(tokenizer_file),
+            "tokenizer_vocab_size": tokenizer.vocab_size(),
+            "eos_id": eos_id,
+            "text_field": text_field,
+        }
+        metadata_temporary.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        os.replace(temporary, target)
+        os.replace(metadata_temporary, metadata_path)
+    finally:
+        temporary.unlink(missing_ok=True)
+        metadata_temporary.unlink(missing_ok=True)
     return total
