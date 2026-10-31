@@ -5,6 +5,8 @@ from torch.utils.data import DataLoader
 from .config import Config
 from .model import ArachneSmall
 from .data import TokenBlockDataset, sha256_file
+from safetensors.torch import save_file
+import shutil
 
 def _seed_everything(seed: int) -> None:
     random.seed(seed)
@@ -47,8 +49,26 @@ def evaluate(model, loader, device, max_batches: int = 50) -> float:
     sample_count = sum(batch_size for _, batch_size in losses)
     return sum(loss * batch_size for loss, batch_size in losses) / sample_count
 
+def _atomic_json_save(payload: dict, destination: Path) -> None:
+    temporary = destination.with_name(destination.name + ".tmp")
+    try:
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _atomic_safetensors_save(state: dict, destination: Path) -> None:
+    temporary = destination.with_name(destination.name + ".tmp")
+    try:
+        save_file({name: tensor.detach().cpu().contiguous() for name, tensor in state.items()}, str(temporary))
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def train(config: Config, train_path: str, validation_path: str,
-          resume: str | None = None) -> Path:
+          tokenizer_path: str, resume: str | None = None) -> Path:
     config.model.validate()
     config.training.validate()
     _seed_everything(config.training.seed)
@@ -80,9 +100,14 @@ def train(config: Config, train_path: str, validation_path: str,
             raise ValueError(f"Token stream checksum mismatch: {token_path}")
         if metadata.get("tokenizer_vocab_size") != config.model.vocab_size:
             raise ValueError(f"Tokenizer vocabulary does not match model config: {token_path}")
+    tokenizer_file = Path(tokenizer_path)
+    if not tokenizer_file.is_file():
+        raise FileNotFoundError(tokenizer_file)
     tokenizer_sha256 = train_metadata.get("tokenizer_sha256")
     if not tokenizer_sha256 or tokenizer_sha256 != validation_metadata.get("tokenizer_sha256"):
         raise ValueError("Train and validation streams must use the exact same tokenizer model.")
+    if sha256_file(tokenizer_file) != tokenizer_sha256:
+        raise ValueError("Provided tokenizer file does not match the token dataset provenance.")
     train_max = int(train_ds.tokens.max().item())
     validation_max = int(val_ds.tokens.max().item())
     if min(int(train_ds.tokens.min().item()), int(val_ds.tokens.min().item())) < 0:
@@ -129,6 +154,8 @@ def train(config: Config, train_path: str, validation_path: str,
     log_path = out / "training.jsonl"
     if log_path.exists() and not resume:
         raise FileExistsError(f"Training log already exists: {log_path}. Choose a new output_dir or resume a checkpoint.")
+    if (out / "model.safetensors").exists() and not resume:
+        raise FileExistsError(f"Model artifact already exists in {out}; choose a new output_dir.")
     iterator = iter(train_loader)
     model.train()
     for step in range(start_step, config.training.max_steps):
@@ -173,8 +200,41 @@ def train(config: Config, train_path: str, validation_path: str,
                                 "model_config": config.model.__dict__,
                                 "training_config": config.training.__dict__,
                                 "tokenizer_sha256": tokenizer_sha256}, path)
-    final = out / "model.pt"
-    _atomic_torch_save({"artifact_version": 1, "model": model.state_dict(),
-                        "model_config": config.model.__dict__,
-                        "tokenizer_sha256": tokenizer_sha256}, final)
-    return final
+    model_path = out / "model.safetensors"
+    tokenizer_output = out / "tokenizer.model"
+    config_output = out / "config.json"
+    manifest_output = out / "artifact-manifest.json"
+    _atomic_safetensors_save(model.state_dict(), model_path)
+    tokenizer_temporary = tokenizer_output.with_name(tokenizer_output.name + ".tmp")
+    try:
+        shutil.copyfile(tokenizer_file, tokenizer_temporary)
+        os.replace(tokenizer_temporary, tokenizer_output)
+    finally:
+        tokenizer_temporary.unlink(missing_ok=True)
+    model_config = config.model.__dict__.copy()
+    model_config.pop("gradient_checkpointing", None)
+    artifact_config = {
+        "format": "arachne-small",
+        "format_version": 1,
+        "architecture": "decoder-only-transformer",
+        "model": model_config,
+        "parameter_count": config.model.parameter_count(),
+        "tokenizer": {"file": tokenizer_output.name, "sha256": tokenizer_sha256,
+                      "vocab_size": config.model.vocab_size},
+        "weights": {"file": model_path.name, "format": "safetensors"},
+    }
+    _atomic_json_save(artifact_config, config_output)
+    artifact_manifest = {
+        "format": "arachne-small-artifact",
+        "format_version": 1,
+        "training_steps_completed": config.training.max_steps,
+        "parameter_count": config.model.parameter_count(),
+        "model_config_sha256": sha256_file(config_output),
+        "weights_sha256": sha256_file(model_path),
+        "tokenizer_sha256": sha256_file(tokenizer_output),
+        "train_tokens_sha256": train_metadata["token_file_sha256"],
+        "validation_tokens_sha256": validation_metadata["token_file_sha256"],
+        "training_log": log_path.name,
+    }
+    _atomic_json_save(artifact_manifest, manifest_output)
+    return model_path
