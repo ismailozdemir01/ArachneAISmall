@@ -192,7 +192,11 @@ def train(config: Config, train_path: str, validation_path: str,
         if summary["tokenizer_sha256"] != tokenizer_sha256:
             raise ValueError("Initial artifact tokenizer does not match the training data.")
         source_model, _ = load_model(initial_artifact, device)
-        if source_model.config != config.model:
+        source_config = source_model.config.__dict__.copy()
+        active_config = config.model.__dict__.copy()
+        source_config.pop("gradient_checkpointing", None)
+        active_config.pop("gradient_checkpointing", None)
+        if source_config != active_config:
             raise ValueError("Initial artifact architecture does not match the active model configuration.")
         model.load_state_dict(source_model.state_dict(), strict=True)
         del source_model
