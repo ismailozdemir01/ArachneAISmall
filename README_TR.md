@@ -119,6 +119,12 @@ Model süreç başlangıcında bir kez yüklenir. GPU belleğinin eşzamanlı is
 - [Dataset Policy](docs/DATASET_POLICY.md)
 - [Artifact Format](docs/ARTIFACT_FORMAT.md)
 
+## Kontrollü sürekli öğrenme
+
+Small, kullanıcı mesajlarını otomatik veya gizlice eğitim verisine dönüştürmez. Kullanıcı açık rıza vererek yanıtı, düzeltmesini ve puanını yerel SQLite deposuna kaydedebilir. Yalnızca uygun puanlı, rızalı düzeltmeler doğrulanmış temel artifact'tan devam eden eğitim döngüsüne alınır. Aday model aynı sabit doğrulama kümesinde mevcut sürümle karşılaştırılır; kayıp eşiğini geçemezse yayımlanmaz. Geçen aday içerik-hash tabanlı sürüm deposuna alınır ve atomik sürüm işaretçisiyle etkin sürüm adayı olur. Önceki doğrulanmış sürüme geri dönüş desteklenir.
+
+Başlangıç komutları ve veri yönetişimi: [Kontrollü Sürekli Öğrenme](docs/CONTINUAL_LEARNING.md). Bu hat, eğitilmiş temel model artifact'ı ve aynı tokenizer ile hazırlanmış doğrulama token dosyası gerektirir. Model şu anda eğitilmiş ağırlık içermez; öğrenme hattının çalıştırılması yerel eğitim donanımı ve veri hazırlığı gerektirir.
+
 ## Kod lisansı
 
 Bu depoya henüz bir kod lisansı eklenmedi. Depoyu public yapmak, kodun yeniden kullanılmasına, değiştirilmesine veya dağıtılmasına otomatik izin vermez. Açık kaynak lisansı olarak tanımlamadan önce depo sahibinin lisans seçimi yapılmalıdır.
