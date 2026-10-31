@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from torch.nn import functional as F
+from torch.nn import functional as F\nfrom torch.utils.checkpoint import checkpoint
 from .config import ModelConfig
 
 class RMSNorm(nn.Module):
@@ -107,7 +107,10 @@ class ArachneSmall(nn.Module):
             raise ValueError("labels must have the same [batch, sequence] shape as input_ids.")
         x = self.token_embedding(input_ids)
         for layer in self.layers:
-            x = layer(x)
+            if self.training and self.config.gradient_checkpointing:
+                x = checkpoint(layer, x, use_reentrant=False)
+            else:
+                x = layer(x)
         logits = self.lm_head(self.final_norm(x))
         loss = None
         if labels is not None:
