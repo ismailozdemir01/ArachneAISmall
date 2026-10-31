@@ -35,7 +35,7 @@ def test_binary_token_dataset_rejects_corrupt_file_size(tmp_path):
 def test_encode_jsonl_records_tokenizer_and_file_provenance(tmp_path):
     corpus = tmp_path / "tokenizer-corpus.txt"
     corpus.write_text(
-        "\\n".join(
+        "\n".join(
             f"Türkçe English data pipeline document {index} "
             "abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789"
             for index in range(200)
@@ -52,7 +52,7 @@ def test_encode_jsonl_records_tokenizer_and_file_provenance(tmp_path):
     processor = spm.SentencePieceProcessor(model_file=str(tokenizer_path))
     source = tmp_path / "documents.jsonl"
     source.write_text(
-        json.dumps({"text": "Türkçe ve English eğitim belgesi."}, ensure_ascii=False) + "\\n",
+        json.dumps({"text": "Türkçe ve English eğitim belgesi."}, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
     output = tmp_path / "encoded" / "tokens.bin"
