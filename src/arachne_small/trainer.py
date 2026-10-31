@@ -251,9 +251,10 @@ def train(config: Config, train_path: str, validation_path: str,
             x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
             amp_dtype = torch.bfloat16 if precision == "bf16" else torch.float16
             with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=precision != "fp32"):
-                loss = model(x, y, activation_dtype=amp_dtype if precision != "fp32" else None)["loss"] / config.training.gradient_accumulation_steps
-            if loss is None or not torch.isfinite(loss):
-                raise RuntimeError(f"Training produced a non-finite loss at step {step + 1}.")
+                raw_loss = model(x, y, activation_dtype=amp_dtype if precision != "fp32" else None)["loss"]
+                if raw_loss is None or not torch.isfinite(raw_loss):
+                    raise RuntimeError(f"Training produced a non-finite loss at step {step + 1}.")
+                loss = raw_loss / config.training.gradient_accumulation_steps
             scaler.scale(loss).backward()
             accumulated += float(loss.detach().item())
         scaler.unscale_(optimizer)
