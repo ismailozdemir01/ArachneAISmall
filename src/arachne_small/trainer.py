@@ -64,13 +64,13 @@ def _truncate_training_log(path: Path, checkpoint_step: int) -> None:
                 try:
                     record = json.loads(line)
                 except json.JSONDecodeError:
-                    if index == len(lines) - 1 and not line.endswith("\\n"):
+                    if index == len(lines) - 1 and not line.endswith("\n"):
                         break
                     raise ValueError(f"Corrupt training log at {path}:{index + 1}")
                 if not isinstance(record, dict) or not isinstance(record.get("step"), int):
                     raise ValueError(f"Invalid training log record at {path}:{index + 1}")
                 if record["step"] <= checkpoint_step:
-                    target.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + "\\n")
+                    target.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + "\n")
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
