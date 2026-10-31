@@ -7,6 +7,7 @@ import os
 import re
 import sqlite3
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -45,12 +46,20 @@ class FeedbackStore:
                 db.execute("ALTER TABLE feedback ADD COLUMN exported INTEGER NOT NULL DEFAULT 0 CHECK(exported IN (0,1))")
             db.execute("CREATE INDEX IF NOT EXISTS feedback_reviewed_idx ON feedback(reviewed, exported, id)")
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self):
         db = sqlite3.connect(self.path, timeout=30)
         db.row_factory = sqlite3.Row
-        db.execute("PRAGMA journal_mode=WAL")
-        db.execute("PRAGMA foreign_keys=ON")
-        return db
+        try:
+            db.execute("PRAGMA journal_mode=WAL")
+            db.execute("PRAGMA foreign_keys=ON")
+            yield db
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
 
     @staticmethod
     def _validate_text(name: str, value: str, limit: int) -> str:
