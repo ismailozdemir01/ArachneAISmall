@@ -1,6 +1,7 @@
 import math, random, json, os
 from pathlib import Path
 import torch
+import sentencepiece as spm
 from torch.utils.data import DataLoader
 from .config import Config
 from .model import ArachneSmall
@@ -149,6 +150,17 @@ def train(config: Config, train_path: str, validation_path: str,
         raise ValueError("Dataset EOS metadata does not match the tokenizer special-token metadata.")
     if sha256_file(tokenizer_file) != tokenizer_sha256:
         raise ValueError("Provided tokenizer file does not match the token dataset provenance.")
+    tokenizer_processor = spm.SentencePieceProcessor(model_file=str(tokenizer_file))
+    actual_special_tokens = {
+        "pad_id": tokenizer_processor.pad_id(),
+        "unk_id": tokenizer_processor.unk_id(),
+        "bos_id": tokenizer_processor.bos_id(),
+        "eos_id": tokenizer_processor.eos_id(),
+    }
+    if tokenizer_processor.vocab_size() != config.model.vocab_size:
+        raise ValueError("SentencePiece model vocabulary does not match the model configuration.")
+    if actual_special_tokens != special_tokens:
+        raise ValueError("Token dataset special-token metadata does not match the actual tokenizer model.")
     train_max = int(train_ds.tokens.max().item())
     validation_max = int(val_ds.tokens.max().item())
     if min(int(train_ds.tokens.min().item()), int(val_ds.tokens.min().item())) < 0:
@@ -181,8 +193,18 @@ def train(config: Config, train_path: str, validation_path: str,
     tokens_seen = 0
     if resume:
         checkpoint = torch.load(resume, map_location=device, weights_only=True)
-        if not isinstance(checkpoint, dict) or checkpoint.get("model_config") != config.model.__dict__:
+        if not isinstance(checkpoint, dict) or checkpoint.get("artifact_version") != 1:
+            raise ValueError("Unsupported or invalid training checkpoint format.")
+        if checkpoint.get("model_config") != config.model.__dict__:
             raise ValueError("Checkpoint model configuration does not match the active configuration.")
+        previous_training = checkpoint.get("training_config", {})
+        immutable_training_fields = (
+            "seed", "batch_size", "gradient_accumulation_steps", "learning_rate",
+            "min_learning_rate", "warmup_steps", "weight_decay", "grad_clip", "precision",
+        )
+        if any(previous_training.get(field) != getattr(config.training, field)
+               for field in immutable_training_fields):
+            raise ValueError("Optimizer-critical training settings differ from the checkpoint.")
         if checkpoint.get("tokenizer_sha256") != tokenizer_sha256:
             raise ValueError("Checkpoint tokenizer does not match the active training data.")
         if not {"model", "optimizer", "step"}.issubset(checkpoint):
