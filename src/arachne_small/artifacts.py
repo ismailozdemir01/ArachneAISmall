@@ -58,7 +58,9 @@ def verify_artifact(artifact_dir: str | Path) -> dict:
     manifest_path = _artifact_file(root, "artifact-manifest.json")
     config = json.loads(config_path.read_text(encoding="utf-8"))
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(config, dict) or config.get("format") != "arachne-small" or config.get("format_version") != 1:
+    if (not isinstance(config, dict) or config.get("format") != "arachne-small"
+            or config.get("format_version") != 1
+            or config.get("architecture") != "decoder-only-transformer"):
         raise ValueError("Unsupported Arachne Small artifact format.")
     if not isinstance(manifest, dict) or manifest.get("format") != "arachne-small-artifact" or manifest.get("format_version") != 1:
         raise ValueError("Unsupported Arachne Small artifact manifest.")
@@ -96,6 +98,8 @@ def verify_artifact(artifact_dir: str | Path) -> dict:
         raise ValueError("Artifact tokenizer vocabulary does not match model vocabulary.")
     if actual_special_tokens != expected_special_tokens:
         raise ValueError("Artifact tokenizer special-token IDs do not match the tokenizer file.")
+    if manifest.get("tokenizer_special_tokens") != actual_special_tokens:
+        raise ValueError("Artifact manifest special-token IDs do not match the tokenizer file.")
     expected_shapes = _expected_state_shapes(model_config)
     with safe_open(str(weights_path), framework="pt", device="cpu") as weights:
         actual_keys = set(weights.keys())
