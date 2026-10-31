@@ -1,4 +1,5 @@
-from dataclasses import dataclass\nimport math
+from dataclasses import dataclass
+import math
 from pathlib import Path
 from typing import Any
 import yaml
