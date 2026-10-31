@@ -109,6 +109,11 @@ def train(config: Config, train_path: str, validation_path: str,
         raise ValueError("Train and validation streams must use the exact same tokenizer model.")
     if train_metadata.get("eos_id") != validation_metadata.get("eos_id"):
         raise ValueError("Train and validation streams must use the same EOS token ID.")
+    special_tokens = train_metadata.get("special_tokens")
+    if not isinstance(special_tokens, dict) or special_tokens != validation_metadata.get("special_tokens"):
+        raise ValueError("Train and validation streams must use identical tokenizer special-token IDs.")
+    if special_tokens.get("eos_id") != train_metadata.get("eos_id"):
+        raise ValueError("Dataset EOS metadata does not match the tokenizer special-token metadata.")
     if sha256_file(tokenizer_file) != tokenizer_sha256:
         raise ValueError("Provided tokenizer file does not match the token dataset provenance.")
     train_max = int(train_ds.tokens.max().item())
@@ -226,7 +231,7 @@ def train(config: Config, train_path: str, validation_path: str,
         "model": model_config,
         "parameter_count": config.model.parameter_count(),
         "tokenizer": {"file": tokenizer_output.name, "sha256": tokenizer_sha256,
-                      "vocab_size": config.model.vocab_size},
+                      "vocab_size": config.model.vocab_size, **special_tokens},
         "weights": {"file": model_path.name, "format": "safetensors"},
     }
     _atomic_json_save(artifact_config, config_output)
@@ -247,6 +252,7 @@ def train(config: Config, train_path: str, validation_path: str,
         "model_config_sha256": sha256_file(config_output),
         "weights_sha256": sha256_file(model_path),
         "tokenizer_sha256": sha256_file(tokenizer_output),
+        "tokenizer_special_tokens": special_tokens,
         "train_tokens_sha256": train_metadata["token_file_sha256"],
         "validation_tokens_sha256": validation_metadata["token_file_sha256"],
         "training_log": log_path.name,
