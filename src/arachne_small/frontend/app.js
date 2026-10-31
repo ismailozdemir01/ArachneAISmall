@@ -19,7 +19,8 @@ const translations = {
     disclaimer:"Model çıktıları hatalı olabilir. Henüz eğitilmemiş veya yüklenmemiş model yanıt üretemez.",
     checking:"Model durumu kontrol ediliyor",ready:"Model hazır",missing:"Eğitilmiş model artifact'ı yüklenmemiş",error:"Model yükleme hatası",
     user:"Siz",assistant:"Arachne Small",thinking:"Yanıt üretiliyor…",unavailable:"Model hazır değil. Önce eğitilmiş artifact'ı sunucuya yükleyin.",
-    requestFailed:"İstek başarısız oldu",newConversation:"Yeni sohbet başlatıldı",empty:"Lütfen bir mesaj yazın."
+    requestFailed:"İstek başarısız oldu",newConversation:"Yeni sohbet başlatıldı",empty:"Lütfen bir mesaj yazın.",
+    feedbackTitle:"Yanıtı iyileştirmeye katkı ver",correctionPlaceholder:"Düzeltilmiş yanıtı yazın...",consentText:"Bu düzeltmenin model eğitimi için yerel olarak saklanmasına açıkça izin veriyorum.",saveFeedback:"Düzeltmeyi gönder",feedbackSaved:"Düzeltme kaydedildi",feedbackFailed:"Düzeltme kaydedilemedi"
   },
   en: {
     newChat:"New chat",runtime:"RUNTIME STATUS",model:"Model",device:"Device",parameters:"Parameters",context:"Context",
@@ -30,7 +31,8 @@ const translations = {
     disclaimer:"Model outputs may be inaccurate. A model that is not trained or loaded cannot generate responses.",
     checking:"Checking model status",ready:"Model ready",missing:"No trained model artifact loaded",error:"Model loading error",
     user:"You",assistant:"Arachne Small",thinking:"Generating response…",unavailable:"Model is not ready. Load a trained artifact on the server first.",
-    requestFailed:"Request failed",newConversation:"New conversation started",empty:"Please enter a message."
+    requestFailed:"Request failed",newConversation:"New conversation started",empty:"Please enter a message.",
+    feedbackTitle:"Help improve the response",correctionPlaceholder:"Write the corrected answer...",consentText:"I explicitly consent to storing this correction locally for model training.",saveFeedback:"Submit correction",feedbackSaved:"Correction saved",feedbackFailed:"Could not save correction"
   }
 };
 const t = (key) => translations[uiLanguage][key] || key;
@@ -133,6 +135,63 @@ async function submitPrompt(value) {
     metadata.className = "message-meta";
     metadata.textContent = `${data.prompt_tokens} prompt · ${data.completion_tokens} completion tokens · ${data.finish_reason}`;
     pending.body.append(metadata);
+    if (data.text) {
+      const feedbackForm = document.createElement("form");
+      feedbackForm.className = "feedback-form";
+      const feedbackTitle = document.createElement("strong");
+      feedbackTitle.textContent = t("feedbackTitle");
+      const correction = document.createElement("textarea");
+      correction.required = true;
+      correction.maxLength = 8000;
+      correction.placeholder = t("correctionPlaceholder");
+      const consentLabel = document.createElement("label");
+      const consent = document.createElement("input");
+      consent.type = "checkbox";
+      consent.required = true;
+      const consentText = document.createElement("span");
+      consentText.textContent = t("consentText");
+      consentLabel.append(consent, consentText);
+      const rating = document.createElement("select");
+      rating.setAttribute("aria-label", "Rating");
+      [5, 4, 3, 2, 1].forEach((value) => {
+        const option = document.createElement("option");
+        option.value = String(value);
+        option.textContent = String(value);
+        rating.append(option);
+      });
+      const submit = document.createElement("button");
+      submit.type = "submit";
+      submit.textContent = t("saveFeedback");
+      feedbackForm.append(feedbackTitle, correction, consentLabel, rating, submit);
+      feedbackForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        submit.disabled = true;
+        try {
+          const feedbackResponse = await fetch("/api/feedback", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({
+              consent: consent.checked,
+              prompt,
+              response: data.text,
+              correction: correction.value,
+              rating: Number(rating.value),
+              language: $("#generation-language").value === "auto"
+                ? (uiLanguage === "tr" ? "tr" : "en")
+                : $("#generation-language").value
+            })
+          });
+          const feedbackData = await feedbackResponse.json().catch(() => ({}));
+          if (!feedbackResponse.ok) throw new Error(feedbackData.detail || t("feedbackFailed"));
+          submit.textContent = t("feedbackSaved");
+          feedbackForm.querySelectorAll("input, textarea, select").forEach((field) => { field.disabled = true; });
+        } catch (feedbackError) {
+          showToast(feedbackError.message || t("feedbackFailed"));
+          submit.disabled = false;
+        }
+      });
+      pending.body.append(feedbackForm);
+    }
   } catch (error) {
     pending.content.textContent = `${t("requestFailed")}: ${error.message}`;
     showToast(error.message);
