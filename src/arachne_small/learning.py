@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import sqlite3
@@ -181,7 +182,7 @@ def promote_candidate(candidate: str | Path, baseline: str | Path,
                       batch_size: int = 1, max_batches: int = 200) -> dict[str, Any]:
     if (isinstance(max_loss_regression, bool)
             or not isinstance(max_loss_regression, (int, float))
-            or not __import__("math").isfinite(max_loss_regression)
+            or not math.isfinite(max_loss_regression)
             or max_loss_regression < 0):
         raise ValueError("max_loss_regression must be a finite non-negative number.")
     baseline_metrics = evaluate_artifact(baseline, validation_tokens, batch_size=batch_size, max_batches=max_batches)
