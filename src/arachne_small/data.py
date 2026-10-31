@@ -55,8 +55,8 @@ def encode_jsonl(input_path: str, output_path: str, tokenizer_path: str,
     if not text_field:
         raise ValueError("text_field must not be empty.")
     tokenizer = spm.SentencePieceProcessor(model_file=str(tokenizer_file))
-    if not isinstance(eos_id, int) or isinstance(eos_id, bool) or not 0 <= eos_id < tokenizer.vocab_size():
-        raise ValueError(f"eos_id {eos_id} is outside tokenizer vocabulary.")
+    if not isinstance(eos_id, int) or isinstance(eos_id, bool) or eos_id != tokenizer.eos_id():
+        raise ValueError(f"eos_id must equal the tokenizer's configured EOS ID ({tokenizer.eos_id()}).")
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name(target.name + ".tmp")
     metadata_path = target.with_name(target.name + ".json")
