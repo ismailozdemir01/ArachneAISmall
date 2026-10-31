@@ -72,8 +72,6 @@ function addMessage(role, text, meta = "") {
   content.textContent = text;
   body.append(label, content);
   if (meta) {
-    conversationHistory.push({ role: "user", content: prompt }, { role: "assistant", content: data.text || "" });
-    conversationHistory = conversationHistory.slice(-20);
     const metadata = document.createElement("div");
     metadata.className = "message-meta";
     metadata.textContent = meta;
@@ -130,6 +128,10 @@ async function submitPrompt(value) {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+    if (data.text) {
+      conversationHistory.push({ role: "user", content: prompt }, { role: "assistant", content: data.text });
+      conversationHistory = conversationHistory.slice(-20);
+    }
     pending.content.textContent = data.text || (uiLanguage === "tr" ? "Model boş yanıt üretti." : "The model returned an empty response.");
     const metadata = document.createElement("div");
     metadata.className = "message-meta";
