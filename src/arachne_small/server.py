@@ -54,7 +54,7 @@ class Runtime:
                 "cuda_available": torch.cuda.is_available(),
                 "version": __version__,
                 "artifact": str(self.artifact_dir) if self.artifact_dir else None,
-                "load_error": self.load_error,
+                "load_error": "Artifact validation or model loading failed. Check server logs." if self.load_error else None,
             }
             if ready:
                 result.update({
