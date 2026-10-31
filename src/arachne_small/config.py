@@ -66,8 +66,8 @@ class TrainingConfig:
                           self.eval_interval, self.save_interval)
         if any(not isinstance(value, int) or isinstance(value, bool) or value <= 0 for value in integer_values):
             raise ValueError("Batch, accumulation, step and interval values must be positive integers.")
-        if self.warmup_steps < 0 or self.num_workers < 0 or self.seed < 0:
-            raise ValueError("warmup_steps, num_workers and seed must be non-negative.")
+        if self.warmup_steps < 0 or self.warmup_steps > self.max_steps or self.num_workers < 0 or self.seed < 0:
+            raise ValueError("warmup_steps must be between zero and max_steps; num_workers and seed must be non-negative.")
         if self.learning_rate <= 0 or self.min_learning_rate < 0 or self.min_learning_rate > self.learning_rate:
             raise ValueError("Learning rates are invalid.")
         if self.weight_decay < 0 or self.grad_clip <= 0:
