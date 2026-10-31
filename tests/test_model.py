@@ -87,3 +87,28 @@ def test_rmsnorm_preserves_low_precision_activation_dtype():
     assert torch.isfinite(values.grad).all()
     assert norm.weight.grad is not None
     assert torch.isfinite(norm.weight.grad).all()
+
+def test_forward_and_generation_support_single_token_prompt():
+    model = ArachneSmall(small_config())
+    prompt = torch.tensor([[7]], dtype=torch.long)
+    output = model(prompt)
+    assert output["logits"].shape == (1, 1, 64)
+    generated = model.generate(prompt, max_new_tokens=1, top_k=1)
+    assert generated.shape == (1, 2)
+
+
+def test_generation_rejects_invalid_token_ids_and_dtypes():
+    model = ArachneSmall(small_config())
+    for prompt in (torch.tensor([[64]]), torch.tensor([[-1]])):
+        try:
+            model.generate(prompt, max_new_tokens=0)
+        except ValueError as exc:
+            assert "outside" in str(exc)
+        else:
+            raise AssertionError("Out-of-vocabulary generation prompt was accepted.")
+    try:
+        model.generate(torch.tensor([[1.0]]), max_new_tokens=0)
+    except TypeError as exc:
+        assert "integer" in str(exc)
+    else:
+        raise AssertionError("Floating-point generation prompt was accepted.")
