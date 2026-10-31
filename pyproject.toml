@@ -5,19 +5,31 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "arachneai-small"
 version = "0.1.0"
-description = "From-scratch Turkish-English decoder-only language model training"
+description = "From-scratch Turkish-English decoder-only language model training and local inference"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["torch>=2.3", "sentencepiece>=0.2.0", "PyYAML>=6.0", "safetensors>=0.4.3"]
+dependencies = [
+    "torch>=2.3",
+    "sentencepiece>=0.2.0",
+    "PyYAML>=6.0",
+    "safetensors>=0.4.3",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.6",
+]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "httpx>=0.27"]
 
 [project.scripts]
 arachne-small = "arachne_small.cli:main"
+arachne-small-serve = "arachne_small.server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+arachne_small = ["frontend/*.html", "frontend/*.css", "frontend/*.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
