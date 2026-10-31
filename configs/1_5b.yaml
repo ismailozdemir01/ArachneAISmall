@@ -8,7 +8,8 @@ model:
   intermediate_size: 5376
   rope_theta: 10000.0
   norm_eps: 0.00001
-  tie_embeddings: false\n  gradient_checkpointing: true
+  tie_embeddings: false
+  gradient_checkpointing: true
 training:
   seed: 1337
   batch_size: 1
