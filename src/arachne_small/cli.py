@@ -9,7 +9,7 @@ from .data import encode_jsonl
 from .trainer import train
 from .corpus import prepare_corpus, export_text
 from .artifacts import verify_artifact
-from .learning import FeedbackStore, evaluate_artifact, promote_candidate, rollback_release
+from .learning import FeedbackStore, evaluate_artifact, promote_candidate, rollback_release, run_learning_cycle
 
 
 def main() -> None:
@@ -77,6 +77,17 @@ def main() -> None:
     rollback = commands.add_parser("rollback-release", help="Atomically restore a verified previous release")
     rollback.add_argument("--release-dir", required=True)
     rollback.add_argument("--version")
+    cycle = commands.add_parser("learn-cycle", help="Run feedback fine-tuning, baseline evaluation, gated promotion and release")
+    cycle.add_argument("--database", default="data/feedback.sqlite3")
+    cycle.add_argument("--base-artifact", required=True)
+    cycle.add_argument("--config", required=True)
+    cycle.add_argument("--validation-data", required=True)
+    cycle.add_argument("--work-dir", required=True)
+    cycle.add_argument("--release-dir", required=True)
+    cycle.add_argument("--min-rating", type=int, choices=range(1, 6), default=4)
+    cycle.add_argument("--max-loss-regression", type=float, default=0.0)
+    cycle.add_argument("--batch-size", type=int, default=1)
+    cycle.add_argument("--max-batches", type=int, default=200)
     commands.add_parser("serve", help="Start the local inference API and web interface")
     args = parser.parse_args()
     if args.command == "tokenizer":
@@ -125,6 +136,14 @@ def main() -> None:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     elif args.command == "rollback-release":
         print(json.dumps(rollback_release(args.release_dir, args.version), ensure_ascii=False, indent=2))
+    elif args.command == "learn-cycle":
+        result = run_learning_cycle(
+            database=args.database, base_artifact=args.base_artifact, config_path=args.config,
+            validation_tokens=args.validation_data, work_dir=args.work_dir,
+            release_dir=args.release_dir, min_rating=args.min_rating,
+            max_loss_regression=args.max_loss_regression,
+            batch_size=args.batch_size, max_batches=args.max_batches)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
     elif args.command == "serve":
         from .server import main as serve
         serve()
