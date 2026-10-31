@@ -125,7 +125,7 @@ class FeedbackRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=8000)
     response: str = Field(min_length=1, max_length=8000)
     correction: str = Field(min_length=1, max_length=8000)
-    rating: int = Field(ge=1, le=5)
+    rating: int = Field(strict=True, ge=1, le=5)
     language: Literal["tr", "en"]
 
 
