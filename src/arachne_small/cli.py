@@ -9,6 +9,7 @@ from .data import encode_jsonl
 from .trainer import train
 from .corpus import prepare_corpus, export_text
 from .artifacts import verify_artifact
+from .learning import FeedbackStore, evaluate_artifact, promote_candidate, rollback_release
 
 
 def main() -> None:
@@ -30,6 +31,7 @@ def main() -> None:
     run.add_argument("--validation-data", required=True)
     run.add_argument("--tokenizer", required=True, help="Exact SentencePiece model used to encode both token streams")
     run.add_argument("--resume")
+    run.add_argument("--initial-artifact", help="Verified model artifact to continue training from; starts a fresh optimizer")
     export = commands.add_parser("export-text")
     export.add_argument("--input", required=True)
     export.add_argument("--output", required=True)
@@ -46,6 +48,35 @@ def main() -> None:
     verify.add_argument("--path", required=True, help="Completed artifact directory")
     count = commands.add_parser("count-parameters")
     count.add_argument("--config", required=True)
+
+    feedback = commands.add_parser("feedback-add", help="Store a correction only after explicit user consent")
+    feedback.add_argument("--database", default="data/feedback.sqlite3")
+    feedback.add_argument("--consent", action="store_true", required=True)
+    feedback.add_argument("--prompt", required=True)
+    feedback.add_argument("--response", required=True)
+    feedback.add_argument("--correction", required=True)
+    feedback.add_argument("--rating", type=int, choices=range(1, 6), required=True)
+    feedback.add_argument("--language", choices=("tr", "en"), required=True)
+    feedback_export = commands.add_parser("feedback-export", help="Export consented, high-rated corrections for review")
+    feedback_export.add_argument("--database", default="data/feedback.sqlite3")
+    feedback_export.add_argument("--output", required=True)
+    feedback_export.add_argument("--min-rating", type=int, choices=range(1, 6), default=4)
+    evaluation = commands.add_parser("evaluate-artifact", help="Measure a verified artifact on a fixed validation token stream")
+    evaluation.add_argument("--artifact", required=True)
+    evaluation.add_argument("--validation-data", required=True)
+    evaluation.add_argument("--batch-size", type=int, default=1)
+    evaluation.add_argument("--max-batches", type=int, default=200)
+    promotion = commands.add_parser("promote-candidate", help="Promote only when candidate validation loss passes the baseline gate")
+    promotion.add_argument("--candidate", required=True)
+    promotion.add_argument("--baseline", required=True)
+    promotion.add_argument("--validation-data", required=True)
+    promotion.add_argument("--release-dir", required=True)
+    promotion.add_argument("--max-loss-regression", type=float, default=0.0)
+    promotion.add_argument("--batch-size", type=int, default=1)
+    promotion.add_argument("--max-batches", type=int, default=200)
+    rollback = commands.add_parser("rollback-release", help="Atomically restore a verified previous release")
+    rollback.add_argument("--release-dir", required=True)
+    rollback.add_argument("--version")
     commands.add_parser("serve", help="Start the local inference API and web interface")
     args = parser.parse_args()
     if args.command == "tokenizer":
@@ -59,7 +90,7 @@ def main() -> None:
         total = encode_jsonl(args.input, args.output, args.tokenizer, args.text_field, args.eos_id)
         print(f"Encoded {total:,} tokens into binary stream {args.output}")
     elif args.command == "train":
-        path = train(load_config(args.config), args.train_data, args.validation_data, args.tokenizer, args.resume)
+        path = train(load_config(args.config), args.train_data, args.validation_data, args.tokenizer, args.resume, args.initial_artifact)
         print(f"Training completed. Model artifact: {path}")
     elif args.command == "export-text":
         count = export_text(args.input, args.output, args.text_field)
@@ -76,6 +107,24 @@ def main() -> None:
     elif args.command == "count-parameters":
         cfg = load_config(args.config)
         print(f"parameters={cfg.model.parameter_count():,}")
+    elif args.command == "feedback-add":
+        record_id = FeedbackStore(args.database).add(
+            consent=args.consent, prompt=args.prompt, response=args.response,
+            correction=args.correction, rating=args.rating, language=args.language)
+        print(json.dumps({"feedback_id": record_id, "stored": True}))
+    elif args.command == "feedback-export":
+        manifest = FeedbackStore(args.database).export_approved(args.output, min_rating=args.min_rating)
+        print(json.dumps(manifest, ensure_ascii=False, indent=2))
+    elif args.command == "evaluate-artifact":
+        print(json.dumps(evaluate_artifact(args.artifact, args.validation_data,
+            batch_size=args.batch_size, max_batches=args.max_batches), ensure_ascii=False, indent=2))
+    elif args.command == "promote-candidate":
+        result = promote_candidate(args.candidate, args.baseline, args.validation_data,
+            args.release_dir, max_loss_regression=args.max_loss_regression,
+            batch_size=args.batch_size, max_batches=args.max_batches)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif args.command == "rollback-release":
+        print(json.dumps(rollback_release(args.release_dir, args.version), ensure_ascii=False, indent=2))
     elif args.command == "serve":
         from .server import main as serve
         serve()
