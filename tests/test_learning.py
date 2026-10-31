@@ -72,3 +72,25 @@ def test_feedback_export_manifest_hash_matches_file(tmp_path):
     assert manifest["export_sha256"] == hashlib.sha256(output.read_bytes()).hexdigest()
     sidecar = output.with_suffix(".jsonl.manifest.json")
     assert json.loads(sidecar.read_text(encoding="utf-8"))["records"] == 1
+
+
+def test_feedback_rejects_credentials_and_non_learning_corrections(tmp_path):
+    store = FeedbackStore(tmp_path / "feedback.sqlite3")
+    with pytest.raises(ValueError, match="credentials or personal contact"):
+        store.add(
+            consent=True,
+            prompt="What is this?",
+            response="Fine",
+            correction="Contact admin@example.com for details",
+            rating=5,
+            language="en",
+        )
+    with pytest.raises(ValueError, match="must differ"):
+        store.add(
+            consent=True,
+            prompt="Explain this",
+            response="Same answer",
+            correction="Same answer",
+            rating=5,
+            language="en",
+        )
