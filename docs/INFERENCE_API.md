@@ -14,6 +14,7 @@ If the environment variable is absent, the HTTP process remains available for st
 | `ARACHNE_SMALL_HOST` | `127.0.0.1` | Bind address |
 | `ARACHNE_SMALL_PORT` | `8000` | TCP port |
 | `ARACHNE_SMALL_ALLOW_REMOTE` | `0` | Must equal `1` to permit non-loopback binding |
+| `ARACHNE_SMALL_FEEDBACK_DB` | `data/feedback.sqlite3` | Local SQLite file for explicitly consented correction feedback |
 
 Loopback binding is the safe default. Enabling remote binding does not add application authentication. Put the service behind an authenticated TLS reverse proxy, restrict network access, and apply request-rate and connection limits before exposing it to other machines or the public internet. Do not expose the development server directly to the internet.
 
@@ -29,7 +30,7 @@ Returns:
 - `ready`: whether a verified model and tokenizer are loaded.
 - `state`: `ready`, `artifact_missing`, or `error`.
 - `device` and `cuda_available`.
-- model version and artifact path.
+- model version and artifact directory name (the absolute local path is not disclosed).
 - parameter count, vocabulary size and context length when loaded.
 
 ### `POST /api/generate`
@@ -71,6 +72,25 @@ Successful response:
 ```
 
 HTTP 503 means no trained artifact is loaded or inference is temporarily unavailable. HTTP 422 indicates invalid request data. Unexpected internal errors are logged server-side; raw exception details are not returned to the client.
+
+### `POST /api/feedback`
+
+Stores a correction only when the request explicitly sets `consent: true`. Feedback remains in the local SQLite database configured by `ARACHNE_SMALL_FEEDBACK_DB`; the endpoint does not transmit it elsewhere.
+
+Request JSON:
+
+```json
+{
+  "consent": true,
+  "prompt": "Original user prompt",
+  "response": "Model response",
+  "correction": "User-provided corrected answer",
+  "rating": 5,
+  "language": "tr"
+}
+```
+
+The API validates text length, language, rating, obvious credential/contact-data patterns, and whether the correction provides a distinct learning signal. Duplicate records are idempotent. A successful response returns a local feedback record ID. No feedback is stored without explicit consent.
 
 ## Operational behavior
 
