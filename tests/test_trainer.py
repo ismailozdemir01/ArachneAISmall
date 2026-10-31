@@ -54,6 +54,8 @@ def test_tiny_training_writes_versioned_model_and_checkpoint(tmp_path):
     assert artifact_config["format_version"] == 1
     assert artifact_config["tokenizer"]["sha256"] == tokenizer_hash
     assert manifest["weights_sha256"] == hashlib.sha256(artifact_path.read_bytes()).hexdigest()
+    assert manifest["training_steps_completed"] == 1
+    assert manifest["parameter_count"] == config.model.parameter_count()
     assert (tmp_path / "run" / "tokenizer.model").read_bytes() == tokenizer_path.read_bytes()
     assert (tmp_path / "run" / "checkpoints" / "step-00000001.pt").is_file()
     assert artifact and all(tensor.is_floating_point() for tensor in artifact.values())
