@@ -5,7 +5,6 @@ import json
 import os
 import re
 import sqlite3
-import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -14,7 +13,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from .artifacts import load_model, verify_artifact
-from .data import TokenBlockDataset
+from .data import TokenBlockDataset, sha256_file
 from .trainer import evaluate
 
 
@@ -156,7 +155,7 @@ def evaluate_artifact(artifact: str | Path, validation_tokens: str | Path,
     metadata = json.loads(sidecar.read_text(encoding="utf-8"))
     if metadata.get("tokenizer_sha256") != summary["tokenizer_sha256"]:
         raise ValueError("Validation data tokenizer does not match the evaluated artifact.")
-    if metadata.get("token_file_sha256") != __import__("hashlib").sha256(Path(validation_tokens).read_bytes()).hexdigest():
+    if metadata.get("token_file_sha256") != sha256_file(validation_tokens):
         raise ValueError("Validation token checksum does not match its sidecar.")
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
     loss = evaluate(model, loader, device, precision=precision, max_batches=max_batches)
