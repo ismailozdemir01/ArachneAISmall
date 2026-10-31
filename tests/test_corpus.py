@@ -21,6 +21,9 @@ def test_prepare_corpus_deduplicates_and_writes_manifest(tmp_path):
     assert (output / "validation.jsonl").is_file()
     saved_manifest = json.loads((output / "dataset-manifest.json").read_text(encoding="utf-8"))
     assert saved_manifest["input_sha256"] == manifest["input_sha256"]
+    import hashlib
+    assert manifest["train_sha256"] == hashlib.sha256((output / "train.jsonl").read_bytes()).hexdigest()
+    assert manifest["validation_sha256"] == hashlib.sha256((output / "validation.jsonl").read_bytes()).hexdigest()
 
 
 def test_prepare_corpus_split_is_deterministic(tmp_path):
