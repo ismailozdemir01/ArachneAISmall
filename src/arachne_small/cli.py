@@ -1,10 +1,10 @@
-import argparse
+import argparse\nimport json
 from pathlib import Path
 import sentencepiece as spm
 from .config import load_config
 from .data import encode_jsonl
 from .trainer import train
-from .corpus import prepare_corpus, export_text
+from .corpus import prepare_corpus, export_text\nfrom .artifacts import verify_artifact
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="arachne-small")
@@ -37,6 +37,8 @@ def main() -> None:
     split.add_argument("--seed", type=int, default=1337)
     split.add_argument("--source", required=True, help="Dataset source and provenance description")
     split.add_argument("--license", required=True, help="Dataset license or documented usage grant")
+    verify = commands.add_parser("verify-artifact")
+    verify.add_argument("--path", required=True, help="Completed artifact directory")
     count = commands.add_parser("count-parameters")
     count.add_argument("--config", required=True)
     args = parser.parse_args()
@@ -62,6 +64,9 @@ def main() -> None:
         print(f"Prepared {manifest['train_documents']:,} train and "
               f"{manifest['validation_documents']:,} validation documents; "
               f"removed {manifest['duplicates_removed']:,} duplicates.")
+    elif args.command == "verify-artifact":
+        summary = verify_artifact(args.path)
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
     elif args.command == "count-parameters":
         cfg = load_config(args.config)
         print(f"parameters={cfg.model.parameter_count():,}")
