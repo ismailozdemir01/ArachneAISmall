@@ -67,6 +67,10 @@ Resume from a checkpoint with `--resume path/to/checkpoints/step-XXXXXXXX.pt`. T
 
 See [docs/MODEL_CARD.md](docs/MODEL_CARD.md) for the model's release status and evaluation requirements, and [docs/DATASET_POLICY.md](docs/DATASET_POLICY.md) for dataset intake and provenance rules.
 
+## Code license
+
+No code license has been selected in this repository. Making the repository public does not by itself grant permission to reuse, modify, or redistribute its code. Add the owner's chosen license before describing the project as open source.
+
 ## Repository boundary
 
 This repository owns tokenizer training, data encoding, model architecture, optimization, checkpointing, evaluation, and model artifact production. ArachneAIOpen owns inference and must consume the versioned artifact format documented there. ArachneAI remains the commercial SaaS product.
