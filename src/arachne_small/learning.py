@@ -77,6 +77,22 @@ class FeedbackStore:
         prompt = self._validate_text("prompt", prompt, 8000)
         response = self._validate_text("response", response, 8000)
         correction = self._validate_text("correction", correction, 8000)
+        combined = "\\n".join((prompt, response, correction))
+        if any(ord(char) < 32 and char not in "\\n\\r\\t" for char in combined):
+            raise ValueError("Feedback contains unsupported control characters.")
+        sensitive_patterns = (
+            r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
+            r"\\bAKIA[0-9A-Z]{16}\\b",
+            r"\\bgh[pousr]_[A-Za-z0-9]{20,}\\b",
+            r"(?i)\\b(?:api[_-]?key|access[_-]?token|client[_-]?secret|password)\\s*[:=]\\s*[^\\s]+",
+            r"(?i)\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b",
+        )
+        if any(re.search(pattern, combined) for pattern in sensitive_patterns):
+            raise ValueError("Feedback appears to contain credentials or personal contact data; it was not stored.")
+        if response.casefold() == correction.casefold():
+            raise ValueError("Correction must differ from the original response to provide a learning signal.")
+        if prompt.casefold() == correction.casefold():
+            raise ValueError("Correction cannot duplicate the prompt.")
         if isinstance(rating, bool) or not isinstance(rating, int) or not 1 <= rating <= 5:
             raise ValueError("rating must be an integer from 1 to 5.")
         if language not in {"tr", "en"}:
