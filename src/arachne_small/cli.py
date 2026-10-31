@@ -1,5 +1,4 @@
 import argparse
-from pathlib import Path
 import sentencepiece as spm
 from .config import load_config
 from .data import encode_jsonl
@@ -17,7 +16,7 @@ def main() -> None:
     prep.add_argument("--output", required=True)
     prep.add_argument("--tokenizer", required=True)
     prep.add_argument("--text-field", default="text")
-    prep.add_argument("--eos-id", type=int, default=1)
+    prep.add_argument("--eos-id", type=int, default=3)
     run = commands.add_parser("train")
     run.add_argument("--config", required=True)
     run.add_argument("--train-data", required=True)
