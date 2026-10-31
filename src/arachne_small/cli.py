@@ -37,6 +37,7 @@ def main() -> None:
     if args.command == "tokenizer":
         if args.vocab_size < 256:
             parser.error("vocab-size must be at least 256")
+        Path(args.output_prefix).parent.mkdir(parents=True, exist_ok=True)
         spm.SentencePieceTrainer.train(input=args.input, model_prefix=args.output_prefix,
             vocab_size=args.vocab_size, model_type="bpe", character_coverage=0.9999,
             pad_id=0, unk_id=1, bos_id=2, eos_id=3, hard_vocab_limit=True)
