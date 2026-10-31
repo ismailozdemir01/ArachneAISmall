@@ -29,8 +29,10 @@ class ModelConfig:
             raise ValueError("n_heads must be divisible by n_kv_heads.")
         if (self.d_model // self.n_heads) % 2:
             raise ValueError("RoPE head dimension must be even.")
-        if not math.isfinite(self.rope_theta) or not math.isfinite(self.norm_eps) or self.rope_theta <= 0 or self.norm_eps <= 0:
-            raise ValueError("rope_theta and norm_eps must be finite and positive.")
+        numeric_model_values = (self.rope_theta, self.norm_eps)
+        if any(not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value)
+               for value in numeric_model_values) or self.rope_theta <= 0 or self.norm_eps <= 0:
+            raise ValueError("rope_theta and norm_eps must be finite positive numbers.")
         if not isinstance(self.tie_embeddings, bool) or not isinstance(self.gradient_checkpointing, bool):
             raise ValueError("tie_embeddings and gradient_checkpointing must be booleans.")
 
@@ -70,11 +72,16 @@ class TrainingConfig:
                           self.eval_interval, self.save_interval)
         if any(not isinstance(value, int) or isinstance(value, bool) or value <= 0 for value in integer_values):
             raise ValueError("Batch, accumulation, step and interval values must be positive integers.")
-        if self.warmup_steps < 0 or self.warmup_steps > self.max_steps or self.num_workers < 0 or self.seed < 0:
-            raise ValueError("warmup_steps must be between zero and max_steps; num_workers and seed must be non-negative.")
+        nonnegative_integers = (self.warmup_steps, self.num_workers, self.seed)
+        if any(not isinstance(value, int) or isinstance(value, bool) or value < 0
+               for value in nonnegative_integers) or self.warmup_steps > self.max_steps:
+            raise ValueError("warmup_steps must be between zero and max_steps; num_workers and seed must be non-negative integers.")
+        if not isinstance(self.output_dir, str) or not self.output_dir.strip():
+            raise ValueError("output_dir must be a non-empty path string.")
         numeric_values = (self.learning_rate, self.min_learning_rate, self.weight_decay, self.grad_clip)
-        if any(not math.isfinite(value) for value in numeric_values):
-            raise ValueError("Training numeric settings must be finite.")
+        if any(not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value)
+               for value in numeric_values):
+            raise ValueError("Training numeric settings must be finite numbers.")
         if self.learning_rate <= 0 or self.min_learning_rate < 0 or self.min_learning_rate > self.learning_rate:
             raise ValueError("Learning rates are invalid.")
         if self.weight_decay < 0 or self.grad_clip <= 0:
