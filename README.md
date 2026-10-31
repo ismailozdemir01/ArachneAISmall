@@ -38,7 +38,7 @@ arachne-small prepare-corpus --input data/source.jsonl --output-dir data/split -
 Train a SentencePiece BPE tokenizer from the authorized training documents only, so validation text does not leak into tokenizer training:
 
 ```bash
-python -c "import json; [print(json.loads(line)['text']) for line in open('data/split/train.jsonl', encoding='utf-8')]" > data/train-corpus.txt
+arachne-small export-text --input data/split/train.jsonl --output data/train-corpus.txt
 arachne-small tokenizer --input data/train-corpus.txt --output-prefix artifacts/tokenizer/arachne --vocab-size 32000
 ```
 
