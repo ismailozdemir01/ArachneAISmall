@@ -7,6 +7,7 @@ const sendButton = $("#send");
 const runtimePill = $("#runtime-state");
 let uiLanguage = "tr";
 let busy = false;
+let conversationHistory = [];
 
 const translations = {
   tr: {
@@ -69,6 +70,8 @@ function addMessage(role, text, meta = "") {
   content.textContent = text;
   body.append(label, content);
   if (meta) {
+    conversationHistory.push({ role: "user", content: prompt }, { role: "assistant", content: data.text || "" });
+    conversationHistory = conversationHistory.slice(-20);
     const metadata = document.createElement("div");
     metadata.className = "message-meta";
     metadata.textContent = meta;
@@ -116,6 +119,7 @@ async function submitPrompt(value) {
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
         prompt,
+        history: conversationHistory.slice(-20),
         max_new_tokens: Number($("#max-tokens").value),
         temperature: Number($("#temperature").value),
         top_k: 50,
@@ -155,6 +159,7 @@ promptInput.addEventListener("keydown", (event) => {
 });
 $("#new-chat").addEventListener("click", () => {
   messages.replaceChildren();
+  conversationHistory = [];
   welcome.hidden = false;
   showToast(t("newConversation"));
 });
