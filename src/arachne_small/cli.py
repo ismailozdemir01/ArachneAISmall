@@ -1,10 +1,12 @@
-import argparse\nimport json
+import argparse
+import json
 from pathlib import Path
 import sentencepiece as spm
 from .config import load_config
 from .data import encode_jsonl
 from .trainer import train
-from .corpus import prepare_corpus, export_text\nfrom .artifacts import verify_artifact
+from .corpus import prepare_corpus, export_text
+from .artifacts import verify_artifact
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="arachne-small")
