@@ -10,6 +10,14 @@ def _normalize_document(value: str) -> str:
     return " ".join(unicodedata.normalize("NFKC", value).split())
 
 
+def _sha256_path(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def prepare_corpus(
     input_path: str,
     output_dir: str,
@@ -104,7 +112,9 @@ def prepare_corpus(
             "duplicates_removed": duplicate_count,
             "invalid_or_empty_documents_skipped": skipped_count,
             "train_file": train_path.name,
+            "train_sha256": _sha256_path(temporary_paths[0]),
             "validation_file": validation_path.name,
+            "validation_sha256": _sha256_path(temporary_paths[1]),
         }
         temporary_paths[2].write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
