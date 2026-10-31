@@ -42,7 +42,7 @@ arachne-small export-text --input data/split/train.jsonl --output data/train-cor
 arachne-small tokenizer --input data/train-corpus.txt --output-prefix artifacts/tokenizer/arachne --vocab-size 32000
 ```
 
-Encode the two document splits independently:
+Encode the two document splits independently. Each binary token stream is written atomically with a `.bin.json` sidecar containing its SHA-256 checksum, tokenizer SHA-256, vocabulary size, EOS ID, source checksum, and token count. Training refuses mismatched tokenizers or altered token files:
 ```bash
 arachne-small prepare-data --input data/split/train.jsonl --output data/processed/train.bin --tokenizer artifacts/tokenizer/arachne.model --eos-id 3
 arachne-small prepare-data --input data/split/validation.jsonl --output data/processed/validation.bin --tokenizer artifacts/tokenizer/arachne.model --eos-id 3
@@ -65,4 +65,4 @@ This repository owns tokenizer training, data encoding, model architecture, opti
 
 ## Current implementation status
 
-The training implementation is source code only. No model weights or training corpus are committed. Training, numerical validation, and hardware throughput measurements must be run on the target machine before claiming a trained release.
+The training implementation is source code only. No model weights or training corpus are committed. Final model artifacts are versioned (`artifact_version: 1`) and record the tokenizer SHA-256 so the inference runtime can verify the exact tokenizer. Training, numerical validation, and hardware throughput measurements must be run on the target machine before claiming a trained release.
