@@ -23,6 +23,7 @@ def main() -> None:
     run.add_argument("--config", required=True)
     run.add_argument("--train-data", required=True)
     run.add_argument("--validation-data", required=True)
+    run.add_argument("--tokenizer", required=True, help="Exact SentencePiece model used to encode both token streams")
     run.add_argument("--resume")
     export = commands.add_parser("export-text")
     export.add_argument("--input", required=True)
@@ -50,7 +51,7 @@ def main() -> None:
         total = encode_jsonl(args.input, args.output, args.tokenizer, args.text_field, args.eos_id)
         print(f"Encoded {total:,} tokens into binary stream {args.output}")
     elif args.command == "train":
-        path = train(load_config(args.config), args.train_data, args.validation_data, args.resume)
+        path = train(load_config(args.config), args.train_data, args.validation_data, args.tokenizer, args.resume)
         print(f"Training completed. Model artifact: {path}")
     elif args.command == "export-text":
         count = export_text(args.input, args.output, args.text_field)
