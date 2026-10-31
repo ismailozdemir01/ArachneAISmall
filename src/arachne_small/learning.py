@@ -247,3 +247,47 @@ def rollback_release(release_dir: str | Path, version: str | None = None) -> dic
     })
     _atomic_json(pointer_path, pointer)
     return pointer
+
+
+def run_learning_cycle(*, database: str | Path, base_artifact: str | Path,
+                       config_path: str | Path, validation_tokens: str | Path,
+                       work_dir: str | Path, release_dir: str | Path,
+                       min_rating: int = 4, max_loss_regression: float = 0.0,
+                       batch_size: int = 1, max_batches: int = 200) -> dict[str, Any]:
+    """Run one complete opt-in feedback -> fine-tune -> evaluate -> gated release cycle."""
+    from dataclasses import replace
+    from .config import load_config
+    from .data import encode_jsonl
+
+    base = Path(base_artifact).expanduser().resolve()
+    base_summary = verify_artifact(base)
+    artifact_config = json.loads((base / "config.json").read_text(encoding="utf-8"))
+    tokenizer_path = base / artifact_config["tokenizer"]["file"]
+    tokenizer = __import__("sentencepiece").SentencePieceProcessor(model_file=str(tokenizer_path))
+    work = Path(work_dir).expanduser().resolve()
+    work.mkdir(parents=True, exist_ok=True)
+    export_path = work / "approved-feedback.jsonl"
+    manifest = FeedbackStore(database).export_approved(export_path, min_rating=min_rating)
+    if manifest["records"] == 0:
+        raise RuntimeError("No new consented feedback meets the minimum rating; no training was started.")
+    train_tokens = work / "feedback-train.bin"
+    encode_jsonl(str(export_path), str(train_tokens), str(tokenizer_path), "text", tokenizer.eos_id())
+    config = load_config(config_path)
+    training_output = work / "candidate"
+    if training_output.exists():
+        import shutil
+        shutil.rmtree(training_output)
+    candidate_config = replace(config, training=replace(config.training, output_dir=str(training_output)))
+    from .trainer import train
+    train(candidate_config, str(train_tokens), str(validation_tokens),
+          str(tokenizer_path), initial_artifact=str(base))
+    gate = promote_candidate(training_output, base, validation_tokens, release_dir,
+                             max_loss_regression=max_loss_regression,
+                             batch_size=batch_size, max_batches=max_batches)
+    return {
+        "feedback_records": manifest["records"],
+        "feedback_export_sha256": manifest["export_sha256"],
+        "base_weights_sha256": base_summary["weights_sha256"],
+        "candidate_artifact": str(training_output),
+        "release": gate,
+    }
