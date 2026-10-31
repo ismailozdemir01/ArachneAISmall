@@ -14,7 +14,8 @@ class ModelConfig:
     intermediate_size: int = 5632
     rope_theta: float = 10000.0
     norm_eps: float = 1e-5
-    tie_embeddings: bool = False\n    gradient_checkpointing: bool = False
+    tie_embeddings: bool = False
+    gradient_checkpointing: bool = False
 
     def validate(self) -> None:
         dimensions = (self.vocab_size, self.d_model, self.n_layers, self.n_heads,
