@@ -52,12 +52,16 @@ arachne-small prepare-data --input data/split/validation.jsonl --output data/pro
 
 ```bash
 arachne-small count-parameters --config configs/1_5b.yaml
-arachne-small train --config configs/1_5b.yaml --train-data data/processed/train.bin --validation-data data/processed/validation.bin
+arachne-small train --config configs/1_5b.yaml --train-data data/processed/train.bin --validation-data data/processed/validation.bin --tokenizer artifacts/tokenizer/arachne.model
 ```
 
 For a genuine end-to-end code smoke run on a small machine, use `configs/dev.yaml` with a tokenizer/data set whose vocabulary and sequence length match that configuration. The 1.5B target requires substantial accelerator memory, storage, and training time; the configuration is not a claim that weights have already been trained.
 
-Resume from a checkpoint with `--resume path/to/checkpoints/step-XXXXXXXX.pt`. Checkpoints contain model and optimizer state. Resume files are trusted local training artifacts; do not load files from untrusted sources. Resume restores model and optimizer state, but does not guarantee bit-for-bit replay of the data-loader shuffle position.
+Resume from a checkpoint with `--resume path/to/checkpoints/step-XXXXXXXX.pt`. The completed run exports `model.safetensors`, the exact `tokenizer.model`, `config.json`, and `artifact-manifest.json`; the package contract is defined in [docs/ARTIFACT_FORMAT.md](docs/ARTIFACT_FORMAT.md). Checkpoints contain model and optimizer state. Resume files are trusted local training artifacts; do not load files from untrusted sources. Resume restores model and optimizer state, but does not guarantee bit-for-bit replay of the data-loader shuffle position.
+
+## Model card and data governance
+
+See [docs/MODEL_CARD.md](docs/MODEL_CARD.md) for the model's release status and evaluation requirements, and [docs/DATASET_POLICY.md](docs/DATASET_POLICY.md) for dataset intake and provenance rules.
 
 ## Repository boundary
 
