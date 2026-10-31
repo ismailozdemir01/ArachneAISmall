@@ -17,9 +17,10 @@ class ModelConfig:
     tie_embeddings: bool = False
 
     def validate(self) -> None:
-        if min(self.vocab_size, self.d_model, self.n_layers, self.n_heads,
-               self.n_kv_heads, self.max_seq_len, self.intermediate_size) <= 0:
-            raise ValueError("All model dimensions must be positive.")
+        dimensions = (self.vocab_size, self.d_model, self.n_layers, self.n_heads,
+                      self.n_kv_heads, self.max_seq_len, self.intermediate_size)
+        if any(not isinstance(value, int) or isinstance(value, bool) or value <= 0 for value in dimensions):
+            raise ValueError("All model dimensions must be positive integers.")
         if self.d_model % self.n_heads:
             raise ValueError("d_model must be divisible by n_heads.")
         if self.n_heads % self.n_kv_heads:
@@ -61,11 +62,16 @@ class TrainingConfig:
     output_dir: str = "artifacts/run"
 
     def validate(self) -> None:
-        if min(self.batch_size, self.gradient_accumulation_steps, self.max_steps,
-               self.eval_interval, self.save_interval) <= 0:
-            raise ValueError("Batch, accumulation, step and interval values must be positive.")
-        if self.learning_rate <= 0 or self.min_learning_rate < 0:
+        integer_values = (self.batch_size, self.gradient_accumulation_steps, self.max_steps,
+                          self.eval_interval, self.save_interval)
+        if any(not isinstance(value, int) or isinstance(value, bool) or value <= 0 for value in integer_values):
+            raise ValueError("Batch, accumulation, step and interval values must be positive integers.")
+        if self.warmup_steps < 0 or self.num_workers < 0 or self.seed < 0:
+            raise ValueError("warmup_steps, num_workers and seed must be non-negative.")
+        if self.learning_rate <= 0 or self.min_learning_rate < 0 or self.min_learning_rate > self.learning_rate:
             raise ValueError("Learning rates are invalid.")
+        if self.weight_decay < 0 or self.grad_clip <= 0:
+            raise ValueError("weight_decay must be non-negative and grad_clip must be positive.")
         if self.precision not in {"fp32", "fp16", "bf16"}:
             raise ValueError("precision must be fp32, fp16 or bf16.")
 
@@ -75,7 +81,10 @@ class Config:
     training: TrainingConfig
 
 def load_config(path: str | Path) -> Config:
-    raw: dict[str, Any] = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+    source = Path(path)
+    raw: dict[str, Any] = yaml.safe_load(source.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict) or not isinstance(raw.get("model"), dict) or not isinstance(raw.get("training"), dict):
+        raise ValueError(f"Configuration must contain model and training mappings: {source}")
     config = Config(ModelConfig(**raw["model"]), TrainingConfig(**raw["training"]))
     config.model.validate()
     config.training.validate()
