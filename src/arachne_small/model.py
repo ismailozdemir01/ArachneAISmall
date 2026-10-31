@@ -1,4 +1,3 @@
-import math
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -75,6 +74,7 @@ class TransformerBlock(nn.Module):
 class ArachneSmall(nn.Module):
     def __init__(self, cfg: ModelConfig):
         super().__init__()
+        cfg.validate()
         self.config = cfg
         self.token_embedding = nn.Embedding(cfg.vocab_size, cfg.d_model)
         self.layers = nn.ModuleList([TransformerBlock(cfg) for _ in range(cfg.n_layers)])
@@ -83,6 +83,11 @@ class ArachneSmall(nn.Module):
         if cfg.tie_embeddings:
             self.lm_head.weight = self.token_embedding.weight
         self.apply(self._init_weights)
+        # Scale residual projections to stabilize deep decoder initialization.
+        scale = (2 * cfg.n_layers) ** -0.5
+        for layer in self.layers:
+            nn.init.normal_(layer.attn.o_proj.weight, mean=0.0, std=0.02 * scale)
+            nn.init.normal_(layer.mlp.down_proj.weight, mean=0.0, std=0.02 * scale)
 
     @staticmethod
     def _init_weights(module: nn.Module) -> None:
@@ -92,10 +97,14 @@ class ArachneSmall(nn.Module):
             nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(self, input_ids: torch.Tensor, labels: torch.Tensor | None = None):
-        if input_ids.ndim != 2:
-            raise ValueError("input_ids must have shape [batch, sequence].")
+        if input_ids.ndim != 2 or input_ids.size(1) < 2:
+            raise ValueError("input_ids must have shape [batch, sequence] with sequence >= 2.")
         if input_ids.size(1) > self.config.max_seq_len:
             raise ValueError("Sequence exceeds configured max_seq_len.")
+        if torch.any(input_ids < 0) or torch.any(input_ids >= self.config.vocab_size):
+            raise ValueError("input_ids contain token IDs outside the configured vocabulary.")
+        if labels is not None and labels.shape != input_ids.shape:
+            raise ValueError("labels must have the same shape as input_ids.")
         x = self.token_embedding(input_ids)
         for layer in self.layers:
             x = layer(x)
@@ -110,16 +119,22 @@ class ArachneSmall(nn.Module):
     def generate(self, input_ids: torch.Tensor, max_new_tokens: int = 128,
                  temperature: float = 0.8, top_k: int | None = 50,
                  eos_token_id: int | None = None) -> torch.Tensor:
+        if input_ids.ndim != 2 or input_ids.size(1) < 1:
+            raise ValueError("input_ids must have shape [batch, sequence].")
         if max_new_tokens < 0 or temperature <= 0:
             raise ValueError("Generation arguments are invalid.")
+        if top_k is not None and top_k < 0:
+            raise ValueError("top_k must be non-negative or None.")
         self.eval()
         for _ in range(max_new_tokens):
             context = input_ids[:, -self.config.max_seq_len:]
             logits = self(context)["logits"][:, -1, :] / temperature
-            if top_k is not None:
+            if top_k:
                 values, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                logits[logits < values[:, [-1]]] = -torch.inf
+                logits = logits.masked_fill(logits < values[:, [-1]], -torch.inf)
             probs = F.softmax(logits, dim=-1)
+            if not torch.isfinite(probs).all():
+                raise RuntimeError("Sampling distribution became non-finite.")
             next_token = torch.multinomial(probs, num_samples=1)
             input_ids = torch.cat((input_ids, next_token), dim=1)
             if eos_token_id is not None and torch.all(next_token == eos_token_id):
