@@ -4,7 +4,7 @@ ArachneAISmall is the from-scratch model research and training repository for th
 
 ## Model design
 
-The initial target configuration is a 1.5B-class decoder-only Transformer with RMSNorm, rotary position embeddings (RoPE), grouped-query causal attention, and SwiGLU feed-forward layers. The dimensions are explicit and configurable; run the parameter counter rather than assuming a label equals an exact parameter count.
+The initial target configuration is a 1.5B-class decoder-only Transformer. The checked-in dimensions resolve to approximately 1.524B trainable parameters, calculated from the implemented layers and embeddings with RMSNorm, rotary position embeddings (RoPE), grouped-query causal attention, and SwiGLU feed-forward layers. The dimensions are explicit and configurable; run the parameter counter rather than assuming a label equals an exact parameter count.
 
 The implementation starts from random initialization. It does not download, wrap, or fine-tune third-party pretrained weights.
 
