@@ -103,8 +103,9 @@ class ArachneSmall(nn.Module):
             raise ValueError("Sequence exceeds configured max_seq_len.")
         if torch.any(input_ids < 0) or torch.any(input_ids >= self.config.vocab_size):
             raise ValueError("input_ids contain token IDs outside the configured vocabulary.")
-        if labels is not None and labels.shape != input_ids.shape:
-            raise ValueError("labels must have the same shape as input_ids.")
+        if labels is not None and (labels.ndim != 2 or labels.size(0) != input_ids.size(0)
+                                   or labels.size(1) != input_ids.size(1) + 1):
+            raise ValueError("labels must contain one additional next-token target: [batch, sequence + 1].")
         x = self.token_embedding(input_ids)
         for layer in self.layers:
             x = layer(x)
