@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.cache/
+data/raw/
+data/processed/
+artifacts/
+checkpoints/
+*.safetensors
+*.pt
+*.model
+*.vocab
