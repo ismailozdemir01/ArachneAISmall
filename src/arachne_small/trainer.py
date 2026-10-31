@@ -39,12 +39,13 @@ def evaluate(model, loader, device, max_batches: int = 50) -> float:
             loss = result["loss"]
             if loss is None or not torch.isfinite(loss):
                 raise RuntimeError("Validation produced a non-finite loss.")
-            losses.append(float(loss.item()))
+            losses.append((float(loss.item()), x.size(0)))
     finally:
         model.train(was_training)
     if not losses:
         raise RuntimeError("Validation dataset produced no batches.")
-    return sum(losses) / len(losses)
+    sample_count = sum(batch_size for _, batch_size in losses)
+    return sum(loss * batch_size for loss, batch_size in losses) / sample_count
 
 def train(config: Config, train_path: str, validation_path: str,
           resume: str | None = None) -> Path:
@@ -92,7 +93,8 @@ def train(config: Config, train_path: str, validation_path: str,
             f"size {config.model.vocab_size}; train tokenizer and model config must match."
         )
     train_loader = DataLoader(train_ds, batch_size=config.training.batch_size, shuffle=True,
-                              num_workers=config.training.num_workers, drop_last=False,
+                              num_workers=config.training.num_workers,
+                              drop_last=(len(train_ds) >= config.training.batch_size),
                               pin_memory=device.type == "cuda")
     val_loader = DataLoader(val_ds, batch_size=config.training.batch_size, shuffle=False,
                             num_workers=config.training.num_workers, pin_memory=device.type == "cuda")
