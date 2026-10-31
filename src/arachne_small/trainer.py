@@ -200,6 +200,8 @@ def train(config: Config, train_path: str, validation_path: str,
             raise ValueError("Initial artifact architecture does not match the active model configuration.")
         initial_weights = load_file(str(initial_root / initial_config["weights"]["file"]), device=str(device))
         model.load_state_dict(initial_weights, strict=True, assign=True)
+        if config.model.tie_embeddings:
+            model.lm_head.weight = model.token_embedding.weight
         del initial_weights
     decay, no_decay = [], []
     for name, param in model.named_parameters():
