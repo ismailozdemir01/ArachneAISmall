@@ -2,7 +2,7 @@ import argparse
 import sentencepiece as spm
 from .config import load_config
 from .data import encode_jsonl
-from .trainer import train
+from .trainer import train\nfrom .corpus import prepare_corpus
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="arachne-small")
@@ -22,6 +22,14 @@ def main() -> None:
     run.add_argument("--train-data", required=True)
     run.add_argument("--validation-data", required=True)
     run.add_argument("--resume")
+    split = commands.add_parser("prepare-corpus")
+    split.add_argument("--input", required=True)
+    split.add_argument("--output-dir", required=True)
+    split.add_argument("--text-field", default="text")
+    split.add_argument("--validation-fraction", type=float, default=0.01)
+    split.add_argument("--seed", type=int, default=1337)
+    split.add_argument("--source", required=True, help="Dataset source and provenance description")
+    split.add_argument("--license", required=True, help="Dataset license or documented usage grant")
     count = commands.add_parser("count-parameters")
     count.add_argument("--config", required=True)
     args = parser.parse_args()
@@ -37,6 +45,12 @@ def main() -> None:
     elif args.command == "train":
         path = train(load_config(args.config), args.train_data, args.validation_data, args.resume)
         print(f"Training completed. Model artifact: {path}")
+    elif args.command == "prepare-corpus":
+        manifest = prepare_corpus(args.input, args.output_dir, args.text_field,
+                                  args.validation_fraction, args.seed, args.source, args.license)
+        print(f"Prepared {manifest['train_documents']:,} train and "
+              f"{manifest['validation_documents']:,} validation documents; "
+              f"removed {manifest['duplicates_removed']:,} duplicates.")
     elif args.command == "count-parameters":
         cfg = load_config(args.config)
         print(f"parameters={cfg.model.parameter_count():,}")
