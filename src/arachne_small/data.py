@@ -60,6 +60,8 @@ def encode_jsonl(input_path: str, output_path: str, tokenizer_path: str,
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name(target.name + ".tmp")
     metadata_path = target.with_name(target.name + ".json")
+    if target.exists() or metadata_path.exists():
+        raise FileExistsError(f"Token output or provenance metadata already exists: {target}")
     metadata_temporary = metadata_path.with_name(metadata_path.name + ".tmp")
     input_digest = hashlib.sha256()
     token_digest = hashlib.sha256()
