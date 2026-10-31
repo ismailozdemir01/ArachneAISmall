@@ -50,6 +50,8 @@ arachne-small prepare-data --input data/split/validation.jsonl --output data/pro
 
 ## Training
 
+The tokenizer file is required at training time. The CLI verifies its SHA-256 against both token dataset sidecars before optimization starts.
+
 ```bash
 arachne-small count-parameters --config configs/1_5b.yaml
 arachne-small train --config configs/1_5b.yaml --train-data data/processed/train.bin --validation-data data/processed/validation.bin --tokenizer artifacts/tokenizer/arachne.model
@@ -69,4 +71,10 @@ This repository owns tokenizer training, data encoding, model architecture, opti
 
 ## Current implementation status
 
-The training implementation is source code only. No model weights or training corpus are committed. Final model artifacts are versioned (`artifact_version: 1`) and record the tokenizer SHA-256 so the inference runtime can verify the exact tokenizer. Training, numerical validation, and hardware throughput measurements must be run on the target machine before claiming a trained release.
+The repository contains the complete source pipeline for producing a trained artifact, but no trained weights or training corpus are committed. A completed run exports a versioned SafeTensors package with the exact tokenizer, architecture config, and SHA-256 manifest. Verify a completed package with:
+
+```bash
+arachne-small verify-artifact --path artifacts/arachne-small-1.5b
+```
+
+Training, numerical validation, artifact verification, and hardware throughput measurements must be run on the target machine before claiming a trained release.
