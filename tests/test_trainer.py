@@ -2,8 +2,6 @@ import hashlib
 import json
 import struct
 
-import torch
-
 from arachne_small.config import Config, ModelConfig, TrainingConfig
 from arachne_small.trainer import train
 
@@ -58,4 +56,4 @@ def test_tiny_training_writes_versioned_model_and_checkpoint(tmp_path):
     assert manifest["weights_sha256"] == hashlib.sha256(artifact_path.read_bytes()).hexdigest()
     assert (tmp_path / "run" / "tokenizer.model").read_bytes() == tokenizer_path.read_bytes()
     assert (tmp_path / "run" / "checkpoints" / "step-00000001.pt").is_file()
-    assert artifact["model"]
+    assert artifact and all(tensor.is_floating_point() for tensor in artifact.values())
