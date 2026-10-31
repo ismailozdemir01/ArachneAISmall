@@ -12,3 +12,7 @@ checkpoints/
 *.pt
 *.model
 *.vocab
+data/split/
+data/*.jsonl
+data/*.bin
+data/*.txt
