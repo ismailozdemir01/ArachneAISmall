@@ -16,6 +16,8 @@ def _artifact_file(root: Path, name: Any) -> Path:
     if not isinstance(name, str) or not name or Path(name).name != name or name in {".", ".."}:
         raise ValueError(f"Artifact file name must be a plain relative filename: {name!r}")
     path = root / name
+    if path.is_symlink():
+        raise ValueError(f"Artifact files cannot be symbolic links: {name}")
     if not path.is_file():
         raise FileNotFoundError(path)
     return path
