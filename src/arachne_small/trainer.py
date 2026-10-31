@@ -186,12 +186,14 @@ def train(config: Config, train_path: str, validation_path: str,
     model = ArachneSmall(config.model).to(device)
     if initial_artifact and resume:
         raise ValueError("Choose either --resume checkpoint or --initial-artifact, not both.")
+    initial_artifact_sha256 = None
     if initial_artifact:
         from .artifacts import verify_artifact
         initial_root = Path(initial_artifact).expanduser().resolve()
         summary = verify_artifact(initial_root)
         if summary["tokenizer_sha256"] != tokenizer_sha256:
             raise ValueError("Initial artifact tokenizer does not match the training data.")
+        initial_artifact_sha256 = summary["weights_sha256"]
         initial_config = json.loads((initial_root / "config.json").read_text(encoding="utf-8"))
         source_config = initial_config["model"].copy()
         active_config = config.model.__dict__.copy()
@@ -345,6 +347,7 @@ def train(config: Config, train_path: str, validation_path: str,
             "weight_decay": config.training.weight_decay,
         },
         "parameter_count": config.model.parameter_count(),
+        "initial_artifact_weights_sha256": initial_artifact_sha256,
         "model_config_sha256": sha256_file(config_output),
         "weights_sha256": sha256_file(model_path),
         "tokenizer_sha256": sha256_file(tokenizer_output),
