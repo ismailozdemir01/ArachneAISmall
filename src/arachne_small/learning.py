@@ -185,6 +185,14 @@ def promote_candidate(candidate: str | Path, baseline: str | Path,
             or not math.isfinite(max_loss_regression)
             or max_loss_regression < 0):
         raise ValueError("max_loss_regression must be a finite non-negative number.")
+    baseline_summary = verify_artifact(baseline)
+    candidate_summary = verify_artifact(candidate)
+    baseline_config = json.loads((Path(baseline) / "config.json").read_text(encoding="utf-8"))
+    candidate_config = json.loads((Path(candidate) / "config.json").read_text(encoding="utf-8"))
+    if baseline_config.get("model") != candidate_config.get("model"):
+        raise ValueError("Baseline and candidate architectures must match for a valid paired comparison.")
+    if baseline_summary["tokenizer_sha256"] != candidate_summary["tokenizer_sha256"]:
+        raise ValueError("Baseline and candidate must use the same tokenizer.")
     baseline_metrics = evaluate_artifact(baseline, validation_tokens, batch_size=batch_size, max_batches=max_batches)
     candidate_metrics = evaluate_artifact(candidate, validation_tokens, batch_size=batch_size, max_batches=max_batches)
     allowed = baseline_metrics["validation_loss"] + max_loss_regression
