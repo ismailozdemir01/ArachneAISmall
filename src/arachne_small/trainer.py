@@ -277,6 +277,8 @@ def train(config: Config, train_path: str, validation_path: str,
                                 "model_config": config.model.__dict__,
                                 "training_config": config.training.__dict__,
                                 "tokenizer_sha256": tokenizer_sha256}, path)
+    final_validation_loss = evaluate(model, val_loader, device)
+    final_validation_perplexity = math.exp(min(80.0, final_validation_loss))
     model_path = out / "model.safetensors"
     tokenizer_output = out / "tokenizer.model"
     config_output = out / "config.json"
@@ -306,6 +308,8 @@ def train(config: Config, train_path: str, validation_path: str,
         "format_version": 1,
         "training_steps_completed": config.training.max_steps,
         "training_tokens_processed": tokens_seen,
+        "final_validation_loss": final_validation_loss,
+        "final_validation_perplexity": final_validation_perplexity,
         "training": {
             "seed": config.training.seed,
             "precision": config.training.precision,
