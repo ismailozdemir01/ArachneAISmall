@@ -16,3 +16,14 @@ data/split/
 data/*.jsonl
 data/*.bin
 data/*.txt
+# Local Python development and build outputs
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+*.sqlite3
+*.tmp
