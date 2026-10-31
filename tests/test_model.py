@@ -48,3 +48,28 @@ def test_generate_accepts_top_k_zero_as_unfiltered_sampling():
     prompt = torch.tensor([[1, 2, 3]])
     result = model.generate(prompt, max_new_tokens=2, top_k=0)
     assert result.shape == (1, 5)
+
+
+def test_gradient_checkpointing_supports_backward():
+    config = ModelConfig(
+        vocab_size=64, d_model=32, n_layers=2, n_heads=4,
+        n_kv_heads=2, max_seq_len=16, intermediate_size=64,
+        gradient_checkpointing=True,
+    )
+    model = ArachneSmall(config)
+    model.train()
+    tokens = torch.randint(0, 64, (2, 8))
+    result = model(tokens, tokens)
+    result["loss"].backward()
+    assert model.token_embedding.weight.grad is not None
+    assert torch.isfinite(model.token_embedding.weight.grad).all()
+
+
+def test_generation_rejects_non_finite_temperature():
+    model = ArachneSmall(small_config())
+    try:
+        model.generate(torch.tensor([[1, 2]]), temperature=float("nan"))
+    except ValueError as exc:
+        assert "finite" in str(exc)
+    else:
+        raise AssertionError("Non-finite temperature was accepted.")
