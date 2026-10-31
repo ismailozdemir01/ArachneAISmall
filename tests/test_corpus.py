@@ -43,10 +43,10 @@ def test_export_text_writes_one_normalized_document_per_line(tmp_path):
 
     source = tmp_path / "documents.jsonl"
     source.write_text(
-        json.dumps({"text": "  Türkçe   metin\\nikinci satır  "}, ensure_ascii=False) + "\\n",
+        json.dumps({"text": "  Türkçe   metin\nikinci satır  "}, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
     output = tmp_path / "tokenizer" / "train.txt"
     count = export_text(str(source), str(output))
     assert count == 1
-    assert output.read_text(encoding="utf-8") == "Türkçe metin ikinci satır\\n"
+    assert output.read_text(encoding="utf-8") == "Türkçe metin ikinci satır\n"
