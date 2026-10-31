@@ -12,8 +12,12 @@ class RMSNorm(nn.Module):
         self.eps = eps
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        scale = torch.rsqrt(x.float().pow(2).mean(-1, keepdim=True) + self.eps)
-        return (x * scale.to(dtype=x.dtype)) * self.weight
+        # Accumulate the variance and affine operation in FP32, then preserve
+        # the activation dtype so mixed-precision residual streams stay compact.
+        x_fp32 = x.float()
+        scale = torch.rsqrt(x_fp32.pow(2).mean(-1, keepdim=True) + self.eps)
+        normalized = (x_fp32 * scale) * self.weight.float()
+        return normalized.to(dtype=x.dtype)
 
 def rotate_half(x: torch.Tensor) -> torch.Tensor:
     x1, x2 = x.chunk(2, dim=-1)
