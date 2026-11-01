@@ -22,7 +22,7 @@ arachne-small feedback-review --database data/feedback.sqlite3 --id 13 --reject
 arachne-small feedback-export --database data/feedback.sqlite3 --output data/approved-feedback.jsonl --min-rating 4
 ```
 
-Only reviewed and approved records meeting the minimum rating are exported. Once a record has been consumed by a successfully promoted cycle, it cannot be re-reviewed.
+Only reviewed and approved records meeting the minimum rating are exported. Approval/rejection decisions are immutable; submit a new feedback record to replace a rejected or incorrect entry. Records consumed by a successfully promoted cycle also remain permanently closed to review.
 
 ## 2. Run a continual-learning cycle
 
