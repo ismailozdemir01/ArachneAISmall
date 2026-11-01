@@ -337,6 +337,12 @@ def promote_candidate(candidate: str | Path, baseline: str | Path,
     if requested_release.is_symlink():
         raise ValueError("Release directory cannot be a symbolic link.")
     release = requested_release.resolve()
+
+    def overlaps(left: Path, right: Path) -> bool:
+        return left == right or left in right.parents or right in left.parents
+
+    if overlaps(release, candidate_path) or overlaps(release, baseline_path):
+        raise ValueError("Release directory must not overlap candidate or baseline artifacts.")
     release.mkdir(parents=True, exist_ok=True)
     import shutil
     version = candidate_metrics["weights_sha256"]
@@ -357,12 +363,28 @@ def promote_candidate(candidate: str | Path, baseline: str | Path,
         if staging.is_symlink():
             raise ValueError("Release staging path cannot be a symbolic link.")
         if staging.exists():
-            shutil.rmtree(staging)
-        shutil.copytree(source, staging)
-        if verify_artifact(staging)["weights_sha256"] != digest:
-            shutil.rmtree(staging)
-            raise ValueError("Staged release artifact hash does not match its content address.")
-        os.replace(staging, destination)
+            raise FileExistsError(
+                f"Release staging path already exists and will not be removed: {staging}"
+            )
+        staging.mkdir()
+        try:
+            source_config = json.loads((source / "config.json").read_text(encoding="utf-8"))
+            inference_files = {
+                "config.json",
+                "artifact-manifest.json",
+                source_config["tokenizer"]["file"],
+                source_config["weights"]["file"],
+            }
+            for filename in inference_files:
+                shutil.copyfile(source / filename, staging / filename)
+                if os.name == "posix":
+                    os.chmod(staging / filename, 0o600)
+            if verify_artifact(staging)["weights_sha256"] != digest:
+                raise ValueError("Staged release artifact hash does not match its content address.")
+            os.replace(staging, destination)
+        except Exception:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
 
     install_immutable(baseline_path, baseline_version)
     install_immutable(candidate_path, version)
