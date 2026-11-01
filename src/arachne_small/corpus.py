@@ -168,18 +168,18 @@ def export_text(input_path: str, output_path: str, text_field: str = "text") -> 
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as dst:
             with source.open("r", encoding="utf-8") as src:
                 for line_no, line in enumerate(src, 1):
-                if not line.strip():
-                    continue
-                try:
-                    row = json.loads(line)
-                except json.JSONDecodeError as exc:
-                    raise ValueError(f"Invalid JSONL at {source}:{line_no}") from exc
-                if not isinstance(row, dict) or not isinstance(row.get(text_field), str):
-                    continue
-                text = _normalize_document(row[text_field])
-                if text:
-                    dst.write(text + "\n")
-                    count += 1
+                    if not line.strip():
+                        continue
+                    try:
+                        row = json.loads(line)
+                    except json.JSONDecodeError as exc:
+                        raise ValueError(f"Invalid JSONL at {source}:{line_no}") from exc
+                    if not isinstance(row, dict) or not isinstance(row.get(text_field), str):
+                        continue
+                    text = _normalize_document(row[text_field])
+                    if text:
+                        dst.write(text + "\n")
+                        count += 1
         if count == 0:
             raise ValueError(f"No usable text documents were found in {source}")
         if target.exists() or target.is_symlink():
