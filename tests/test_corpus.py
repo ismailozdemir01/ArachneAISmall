@@ -53,3 +53,39 @@ def test_export_text_writes_one_normalized_document_per_line(tmp_path):
     count = export_text(str(source), str(output))
     assert count == 1
     assert output.read_text(encoding="utf-8") == "Türkçe metin ikinci satır\n"
+
+
+
+def test_prepare_corpus_preserves_unrelated_dedup_named_file(tmp_path):
+    source = tmp_path / "source.jsonl"
+    source.write_text(
+        "".join(json.dumps({"text": f"document {index}"}) + "\n" for index in range(500)),
+        encoding="utf-8",
+    )
+    output = tmp_path / "prepared"
+    output.mkdir()
+    sentinel = output / ".dedup-index.sqlite3"
+    sentinel.write_bytes(b"unrelated user data")
+
+    prepare_corpus(
+        str(source), str(output), validation_fraction=0.2, seed=7,
+        source="licensed source", license_name="CC-BY-4.0",
+    )
+
+    assert sentinel.read_bytes() == b"unrelated user data"
+    assert not list(output.glob(".arachne-corpus-*"))
+
+
+def test_export_text_never_overwrites_existing_output(tmp_path):
+    from arachne_small.corpus import export_text
+    import pytest
+
+    source = tmp_path / "documents.jsonl"
+    source.write_text(json.dumps({"text": "new content"}) + "\n", encoding="utf-8")
+    output = tmp_path / "existing.txt"
+    output.write_text("preserve existing content", encoding="utf-8")
+
+    with pytest.raises(FileExistsError):
+        export_text(str(source), str(output))
+
+    assert output.read_text(encoding="utf-8") == "preserve existing content"
