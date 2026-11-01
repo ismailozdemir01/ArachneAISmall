@@ -410,12 +410,19 @@ def _read_release_version(release: Path) -> str | None:
     if not pointer.is_file():
         return None
     data = json.loads(pointer.read_text(encoding="utf-8"))
+    if (not isinstance(data, dict)
+            or data.get("format") != "arachne-small-release"
+            or data.get("format_version") != 1):
+        raise ValueError("Existing release pointer has an unsupported format.")
     version = data.get("version")
     version_path = release / version if isinstance(version, str) else release
     if (not isinstance(version, str) or not re.fullmatch(r"[0-9a-f]{64}", version)
+            or data.get("artifact") != version
             or version_path.is_symlink() or not version_path.is_dir()):
         raise ValueError("Existing release pointer is invalid; refusing to overwrite it.")
-    verify_artifact(release / version)
+    summary = verify_artifact(version_path)
+    if summary["weights_sha256"] != version:
+        raise ValueError("Release directory name does not match its artifact weight hash.")
     return version
 
 
@@ -448,7 +455,9 @@ def rollback_release(release_dir: str | Path, version: str | None = None) -> dic
         raise ValueError("Rollback target cannot be a symbolic link.")
     if not target_path.is_dir():
         raise FileNotFoundError(f"Release version does not exist: {target}")
-    verify_artifact(target_path)
+    target_summary = verify_artifact(target_path)
+    if target_summary["weights_sha256"] != target:
+        raise ValueError("Rollback target directory does not match its artifact weight hash.")
     pointer.update({
         "previous_version": current,
         "version": target,
