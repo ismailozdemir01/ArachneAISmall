@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import logging
 import os
 import threading
@@ -9,7 +10,7 @@ from typing import Literal
 
 import torch
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -56,6 +57,10 @@ class Runtime:
                 "version": __version__,
                 "artifact": self.artifact_dir.name if self.artifact_dir else None,
                 "load_error": "Artifact validation or model loading failed. Check server logs." if self.load_error else None,
+                "authentication_required": (
+                    os.environ.get("ARACHNE_SMALL_ALLOW_REMOTE") == "1"
+                    or bool(os.environ.get("ARACHNE_SMALL_API_TOKEN"))
+                ),
             }
             if ready:
                 result.update({
@@ -156,8 +161,17 @@ class GenerateRequest(BaseModel):
 runtime = Runtime()
 
 
+def _api_token() -> str | None:
+    token = os.environ.get("ARACHNE_SMALL_API_TOKEN", "").strip()
+    return token or None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if os.environ.get("ARACHNE_SMALL_ALLOW_REMOTE") == "1":
+        token = _api_token()
+        if token is None or len(token) < 32:
+            raise RuntimeError("Remote serving requires ARACHNE_SMALL_API_TOKEN with at least 32 characters.")
     artifact = os.environ.get("ARACHNE_SMALL_ARTIFACT")
     if artifact:
         try:
@@ -175,6 +189,27 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.mount("/assets", StaticFiles(directory=FRONTEND_DIR), name="assets")
+
+@app.middleware("http")
+async def protect_inference_and_feedback(request: Request, call_next):
+    if request.url.path in {"/api/generate", "/api/feedback"}:
+        token = _api_token()
+        remote_mode = os.environ.get("ARACHNE_SMALL_ALLOW_REMOTE") == "1"
+        if remote_mode and (token is None or len(token) < 32):
+            return JSONResponse(status_code=503, content={
+                "detail": "Remote API authentication is not configured securely."
+            })
+        if token is not None:
+            authorization = request.headers.get("authorization", "")
+            scheme, _, supplied = authorization.partition(" ")
+            if scheme.lower() != "bearer" or not supplied or not hmac.compare_digest(supplied, token):
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "A valid bearer API token is required."},
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+    return await call_next(request)
+
 
 
 @app.get("/", include_in_schema=False)
@@ -235,8 +270,13 @@ def main() -> None:
     import uvicorn
     host = os.environ.get("ARACHNE_SMALL_HOST", "127.0.0.1")
     port = int(os.environ.get("ARACHNE_SMALL_PORT", "8000"))
-    if host not in {"127.0.0.1", "localhost", "::1"} and os.environ.get("ARACHNE_SMALL_ALLOW_REMOTE") != "1":
+    remote_mode = host not in {"127.0.0.1", "localhost", "::1"}
+    if remote_mode and os.environ.get("ARACHNE_SMALL_ALLOW_REMOTE") != "1":
         raise SystemExit("Remote binding is disabled. Set ARACHNE_SMALL_ALLOW_REMOTE=1 only behind a secured network boundary.")
+    if remote_mode:
+        token = _api_token()
+        if token is None or len(token) < 32:
+            raise SystemExit("Remote binding requires ARACHNE_SMALL_API_TOKEN with at least 32 characters.")
     uvicorn.run("arachne_small.server:app", host=host, port=port, reload=False, access_log=True)
 
 
