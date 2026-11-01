@@ -151,11 +151,13 @@ class FeedbackStore:
             raise TypeError("approved must be a boolean.")
         with self._connect() as db:
             row = db.execute(
-                "SELECT exported FROM feedback WHERE id=? AND consent=1",
+                "SELECT reviewed,exported FROM feedback WHERE id=? AND consent=1",
                 (record_id,),
             ).fetchone()
             if row is None:
                 raise KeyError(f"Feedback record does not exist: {record_id}")
+            if row["reviewed"]:
+                raise ValueError("Feedback review decisions are immutable; submit a new correction instead.")
             if row["exported"]:
                 raise ValueError("Exported feedback cannot be re-reviewed; create a new correction instead.")
             db.execute(
