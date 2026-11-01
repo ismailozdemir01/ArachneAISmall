@@ -13,9 +13,10 @@ arachne-small feedback-add --database data/feedback.sqlite3 --consent \\
 
 Consent alone does not make a record trainable. Every record must first be explicitly reviewed and approved by an operator; rejected and pending records are excluded. A rating threshold is an additional filter, not an approval substitute. Corrections, not the model's original answer, become the target text. The response is retained for audit context but is not treated as ground truth.
 
-Review records individually before export:
+List the pending review queue, inspect each prompt/response/correction, then decide:
 
 ```bash
+arachne-small feedback-list --database data/feedback.sqlite3 --limit 100
 arachne-small feedback-review --database data/feedback.sqlite3 --id 12 --approve
 arachne-small feedback-review --database data/feedback.sqlite3 --id 13 --reject
 arachne-small feedback-export --database data/feedback.sqlite3 --output data/approved-feedback.jsonl --min-rating 4
