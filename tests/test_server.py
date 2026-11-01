@@ -9,6 +9,9 @@ def test_health_endpoint_reports_service_process():
         response = client.get("/api/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "service": "arachne-small"}
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "no-referrer"
 
 
 def test_status_endpoint_does_not_claim_unloaded_model_is_ready():
@@ -23,6 +26,7 @@ def test_status_endpoint_does_not_claim_unloaded_model_is_ready():
         assert response.status_code == 200
         assert response.json()["ready"] is False
         assert response.json()["state"] == "artifact_missing"
+        assert response.headers["cache-control"] == "no-store"
     finally:
         runtime.model, runtime.tokenizer, runtime.artifact_dir, runtime.load_error = previous
 
