@@ -129,3 +129,26 @@ def test_feedback_review_rejects_unknown_ids_and_invalid_actions(tmp_path):
         store.review(0, approved=True)
     with pytest.raises(TypeError):
         store.review(1, approved=1)
+
+
+
+def test_pending_feedback_queue_exposes_review_context_and_excludes_decided_records(tmp_path):
+    store = FeedbackStore(tmp_path / "feedback.sqlite3")
+    pending_id = store.add(
+        consent=True, prompt="Review this prompt", response="Model output",
+        correction="Suggested correction", rating=5, language="en",
+    )
+    rejected_id = store.add(
+        consent=True, prompt="Reject this prompt", response="Model output",
+        correction="Rejected correction", rating=4, language="tr",
+    )
+    store.review(rejected_id, approved=False)
+
+    pending = store.list_pending(limit=10)
+    assert [record["id"] for record in pending] == [pending_id]
+    assert pending[0]["prompt"] == "Review this prompt"
+    assert pending[0]["response"] == "Model output"
+    assert pending[0]["correction"] == "Suggested correction"
+
+    with pytest.raises(ValueError):
+        store.list_pending(limit=0)
