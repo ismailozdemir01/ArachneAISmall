@@ -101,6 +101,35 @@ def test_tiny_training_writes_versioned_model_and_checkpoint(tmp_path):
     assert (tmp_path / "run" / "checkpoints" / "step-00000001.pt").is_file()
     assert artifact and all(tensor.is_floating_point() for tensor in artifact.values())
 
+    from dataclasses import replace
+    occupied_output = tmp_path / "occupied-output"
+    occupied_output.mkdir()
+    sentinel = occupied_output / "keep.txt"
+    sentinel.write_text("preserve existing user data", encoding="utf-8")
+    unsafe_config = replace(
+        config,
+        training=replace(config.training, output_dir=str(occupied_output)),
+    )
+    with pytest.raises(FileExistsError, match="not empty"):
+        train(unsafe_config, str(train_path), str(validation_path), str(tokenizer_path))
+    assert sentinel.read_text(encoding="utf-8") == "preserve existing user data"
+
+    from arachne_small.learning import run_learning_cycle
+    occupied_work = tmp_path / "occupied-work"
+    occupied_work.mkdir()
+    work_sentinel = occupied_work / "keep.txt"
+    work_sentinel.write_text("preserve learning work data", encoding="utf-8")
+    with pytest.raises(FileExistsError, match="not empty"):
+        run_learning_cycle(
+            database=tmp_path / "feedback.sqlite3",
+            base_artifact=tmp_path / "run",
+            config_path=tmp_path / "unused.yaml",
+            validation_tokens=validation_path,
+            work_dir=occupied_work,
+            release_dir=tmp_path / "release",
+        )
+    assert work_sentinel.read_text(encoding="utf-8") == "preserve learning work data"
+
     sidecar_path = validation_path.with_name(validation_path.name + ".json")
     sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
     sidecar["token_count"] += 1
