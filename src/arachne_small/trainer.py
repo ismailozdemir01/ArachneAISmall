@@ -244,7 +244,10 @@ def train(config: Config, train_path: str, validation_path: str,
             raise ValueError("Checkpoint step is outside the configured training schedule.")
         if "scaler" in checkpoint:
             scaler.load_state_dict(checkpoint["scaler"])
-    out = Path(config.training.output_dir).expanduser().resolve()
+    requested_output = Path(config.training.output_dir).expanduser()
+    if requested_output.is_symlink():
+        raise ValueError("Training output directory cannot be a symbolic link.")
+    out = requested_output.resolve()
     if out.exists():
         if not out.is_dir():
             raise NotADirectoryError(out)
