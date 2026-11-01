@@ -59,7 +59,7 @@ class Runtime:
                 "load_error": "Artifact validation or model loading failed. Check server logs." if self.load_error else None,
                 "authentication_required": (
                     os.environ.get("ARACHNE_SMALL_ALLOW_REMOTE") == "1"
-                    or bool(os.environ.get("ARACHNE_SMALL_API_TOKEN"))
+                    or bool(os.environ.get("ARACHNE_SMALL_API_TOKEN", "").strip())
                 ),
             }
             if ready:
@@ -203,12 +203,24 @@ async def protect_inference_and_feedback(request: Request, call_next):
             authorization = request.headers.get("authorization", "")
             scheme, _, supplied = authorization.partition(" ")
             if scheme.lower() != "bearer" or not supplied or not hmac.compare_digest(supplied, token):
-                return JSONResponse(
+                response = JSONResponse(
                     status_code=401,
                     content={"detail": "A valid bearer API token is required."},
                     headers={"WWW-Authenticate": "Bearer"},
                 )
-    return await call_next(request)
+            else:
+                response = await call_next(request)
+        else:
+            response = await call_next(request)
+    else:
+        response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 
