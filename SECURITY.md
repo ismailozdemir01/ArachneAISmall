@@ -15,3 +15,6 @@ Please do not publish exploitable vulnerability details in a public issue. Use G
 - Prefer SafeTensors for inference weights.
 - Verify artifact checksums and schema before loading a model.
 - Keep model-serving endpoints and training hosts isolated according to their deployment threat model.
+- Remote serving must use `ARACHNE_SMALL_ALLOW_REMOTE=1` together with a unique `ARACHNE_SMALL_API_TOKEN` of at least 32 characters. Inference and feedback write endpoints reject requests without a valid Bearer token.
+- Never commit API tokens, feedback databases, feedback exports, checkpoints, or private corpora. Restrict feedback storage and backups to authorized operators.
+- Review and explicitly approve each feedback record before it can enter a training export. Treat user corrections as untrusted data even after consent; inspect them for quality, licensing, privacy, and prompt-injection content before approval.
