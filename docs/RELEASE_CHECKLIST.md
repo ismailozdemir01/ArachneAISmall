@@ -4,7 +4,7 @@ This checklist separates publishing the source repository from releasing trained
 
 ## Source repository publication
 
-- [ ] Confirm the repository owner has selected the code license. Public visibility alone does not grant downstream users a license to copy, modify, or redistribute the code.
+- [x] Apache License 2.0 is selected for repository source code. Confirm separate licenses for datasets, third-party assets, and trained weights before distributing those materials.
 - [ ] Review every committed file for secrets, private data, and accidentally included datasets or weights.
 - [ ] Review dependency versions and security advisories.
 - [ ] Run the complete test suite locally on the supported Python/PyTorch environment.
