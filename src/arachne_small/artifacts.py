@@ -117,6 +117,8 @@ def verify_artifact(artifact_dir: str | Path) -> dict:
         "vocab_size": tokenizer.vocab_size(),
         "weights_sha256": manifest["weights_sha256"],
         "tokenizer_sha256": manifest["tokenizer_sha256"],
+        "model_config_sha256": manifest["model_config_sha256"],
+        "artifact_manifest_sha256": sha256_file(manifest_path),
     }
 
 
