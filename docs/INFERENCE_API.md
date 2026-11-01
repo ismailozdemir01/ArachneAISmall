@@ -15,8 +15,9 @@ If the environment variable is absent, the HTTP process remains available for st
 | `ARACHNE_SMALL_PORT` | `8000` | TCP port |
 | `ARACHNE_SMALL_ALLOW_REMOTE` | `0` | Must equal `1` to permit non-loopback binding |
 | `ARACHNE_SMALL_FEEDBACK_DB` | `data/feedback.sqlite3` | Local SQLite file for explicitly consented correction feedback |
+| `ARACHNE_SMALL_API_TOKEN` | unset | Optional bearer token; required (minimum 32 characters) when remote binding is enabled |
 
-Loopback binding is the safe default. Enabling remote binding does not add application authentication. Put the service behind an authenticated TLS reverse proxy, restrict network access, and apply request-rate and connection limits before exposing it to other machines or the public internet. Do not expose the development server directly to the internet.
+Loopback binding is the safe default. When remote binding is enabled, the process refuses to start unless `ARACHNE_SMALL_API_TOKEN` is configured with at least 32 characters. The `POST /api/generate` and `POST /api/feedback` endpoints require this value as an HTTP Bearer token. The web interface exposes a password input when authentication is enabled; the token is held in page memory only and is not written to browser storage. Keep the token secret and transmit it only over TLS. Also put the service behind a TLS reverse proxy, restrict network access, and apply request-rate and connection limits. Do not expose the development server directly to the internet.
 
 ## Endpoints
 
@@ -101,5 +102,6 @@ The API validates text length, language, rating, obvious credential/contact-data
 - The browser UI inserts user and model text using DOM text nodes, not HTML interpretation.
 - The UI sends a bounded previous-turn history with each generation request; history is held in browser memory and cleared by starting a new chat. No conversation content is persisted on the server or across page reloads.
 - The API currently provides synchronous generation, not token streaming or multi-user scheduling.
+- On POSIX systems, feedback database, WAL/SHM, and export temporary files are restricted to owner-only permissions. SQLite secure deletion is enabled; filesystem snapshots and backups remain the operator's responsibility.
 
 A trained artifact is a prerequisite for inference. A configured architecture or an untrained checkpoint must not be represented as a released trained model.
