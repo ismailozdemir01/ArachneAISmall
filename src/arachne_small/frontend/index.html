@@ -34,6 +34,11 @@
             <div class="info-row"><span data-i18n="context">Bağlam</span><strong id="context-value">—</strong></div>
           </div>
         </div>
+        <div id="api-token-wrap" class="api-token-wrap" hidden>
+          <label for="api-token" data-i18n="apiTokenLabel">API erişim anahtarı</label>
+          <input id="api-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="512" data-i18n-placeholder="apiTokenPlaceholder" placeholder="Bearer API token">
+          <small data-i18n="apiTokenNote">Anahtar yalnızca bu sayfa açıkken bellekte tutulur.</small>
+        </div>
         <div class="sidebar-note" data-i18n="localNote">İstekler yapılandırdığınız yerel ArachneAISmall sunucusuna gönderilir.</div>
         <div class="sidebar-footer">ArachneAISmall <span id="version-value">v—</span></div>
       </aside>
