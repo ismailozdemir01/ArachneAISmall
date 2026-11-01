@@ -48,6 +48,9 @@ def test_export_uses_corrections_and_only_eligible_unexported_records(tmp_path):
         correction="Onaylanan düzeltme", rating=5, language="tr",
     )
     output = tmp_path / "approved.jsonl"
+    pending = store.export_approved(output, min_rating=4)
+    assert pending["records"] == 0
+    store.review(accepted, approved=True)
     manifest = store.export_approved(output, min_rating=4)
     rows = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
     assert manifest["records"] == 1
@@ -94,3 +97,35 @@ def test_feedback_rejects_credentials_and_non_learning_corrections(tmp_path):
             rating=5,
             language="en",
         )
+
+
+
+def test_feedback_must_be_explicitly_reviewed_and_approved_before_export(tmp_path):
+    store = FeedbackStore(tmp_path / "feedback.sqlite3")
+    record_id = store.add(
+        consent=True, prompt="Question", response="Wrong answer",
+        correction="Reviewed correction", rating=5, language="en",
+    )
+    output = tmp_path / "approved.jsonl"
+    assert store.export_approved(output)["records"] == 0
+
+    store.review(record_id, approved=False)
+    assert store.export_approved(output)["records"] == 0
+
+    store.review(record_id, approved=True)
+    assert store.export_approved(output)["records"] == 1
+
+    manifest = json.loads(output.with_suffix(".jsonl.manifest.json").read_text(encoding="utf-8"))
+    store.mark_exported(manifest["record_hashes"])
+    with pytest.raises(ValueError, match="cannot be re-reviewed"):
+        store.review(record_id, approved=False)
+
+
+def test_feedback_review_rejects_unknown_ids_and_invalid_actions(tmp_path):
+    store = FeedbackStore(tmp_path / "feedback.sqlite3")
+    with pytest.raises(KeyError):
+        store.review(999, approved=True)
+    with pytest.raises(ValueError):
+        store.review(0, approved=True)
+    with pytest.raises(TypeError):
+        store.review(1, approved=1)
