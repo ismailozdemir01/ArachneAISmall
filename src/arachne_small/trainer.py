@@ -244,15 +244,27 @@ def train(config: Config, train_path: str, validation_path: str,
             raise ValueError("Checkpoint step is outside the configured training schedule.")
         if "scaler" in checkpoint:
             scaler.load_state_dict(checkpoint["scaler"])
-    out = Path(config.training.output_dir)
-    (out / "checkpoints").mkdir(parents=True, exist_ok=True)
+    out = Path(config.training.output_dir).expanduser().resolve()
+    if out.exists():
+        if not out.is_dir():
+            raise NotADirectoryError(out)
+        if not resume and any(out.iterdir()):
+            raise FileExistsError(
+                f"Training output directory is not empty: {out}. "
+                "Use a new directory or resume from a compatible checkpoint; existing files are preserved."
+            )
+    else:
+        out.mkdir(parents=True, exist_ok=False)
+    if resume and not Path(resume).expanduser().is_file():
+        raise FileNotFoundError(f"Resume checkpoint does not exist: {resume}")
     log_path = out / "training.jsonl"
-    if log_path.exists() and not resume:
-        raise FileExistsError(f"Training log already exists: {log_path}. Choose a new output_dir or resume a checkpoint.")
+    if resume and not log_path.is_file():
+        raise FileNotFoundError(
+            f"Cannot resume without the matching training log: {log_path}"
+        )
     if resume:
         _truncate_training_log(log_path, start_step)
-    if (out / "model.safetensors").exists() and not resume:
-        raise FileExistsError(f"Model artifact already exists in {out}; choose a new output_dir.")
+    (out / "checkpoints").mkdir(parents=True, exist_ok=True)
     iterator = iter(train_loader)
     model.train()
     for step in range(start_step, config.training.max_steps):
