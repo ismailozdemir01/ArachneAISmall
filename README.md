@@ -50,7 +50,7 @@ arachne-small count-parameters --config configs/1_5b.yaml
 | Model artifacts | SafeTensors weights, tokenizer, model configuration and SHA-256 manifest |
 | Artifact verification | File integrity, tokenizer identity, tensor names/shapes and architecture checks |
 | Inference | FastAPI endpoints and a Turkish/English browser interface |
-| Feedback | Local SQLite storage with explicit user consent |
+| Feedback | Local SQLite storage with explicit user consent and mandatory operator review/approval before training export |
 | Continual learning | Candidate fine-tuning from a verified base artifact, baseline comparison, gated promotion and rollback |
 
 Implementation and operational details are documented in the `docs/` directory.
@@ -156,7 +156,7 @@ See [Inference API](docs/INFERENCE_API.md).
 
 ## Controlled continual learning
 
-The feedback workflow is opt-in and local. Eligible corrections can be used to train a candidate initialized from a verified base artifact. The candidate is evaluated against the baseline on the same validation token stream. Promotion is blocked when the configured validation-loss gate fails; promoted releases are content-addressed and support verified rollback.
+The feedback workflow is opt-in and local. Feedback must be explicitly reviewed and approved by an operator before eligible corrections can be used to train a candidate initialized from a verified base artifact. The candidate is evaluated against the baseline on the same validation token stream. Promotion is blocked when the configured validation-loss gate fails; promoted releases are content-addressed and support verified rollback.
 
 This workflow requires an already trained base artifact and a matching validation dataset. It does not mean continual learning has already been run on a released model.
 
