@@ -59,7 +59,7 @@ def test_export_uses_corrections_and_only_eligible_unexported_records(tmp_path):
     assert "Onaylanan düzeltme" in rows[0]["text"]
     assert "Yanlış yanıt" not in rows[0]["text"]
     store.mark_exported(manifest["record_hashes"])
-    second = store.export_approved(output, min_rating=4)
+    second = store.export_approved(tmp_path / "approved-second.jsonl", min_rating=4)
     assert second["records"] == 0
 
 
@@ -153,3 +153,62 @@ def test_pending_feedback_queue_exposes_review_context_and_excludes_decided_reco
 
     with pytest.raises(ValueError):
         store.list_pending(limit=0)
+
+
+
+def test_feedback_database_and_exports_are_private_on_posix(tmp_path):
+    import os
+    import stat
+
+    if os.name != "posix":
+        pytest.skip("POSIX permission bits are not portable to this platform.")
+
+    store = FeedbackStore(tmp_path / "private" / "feedback.sqlite3")
+    record_id = store.add(
+        consent=True, prompt="Question", response="Wrong",
+        correction="Corrected answer", rating=5, language="en",
+    )
+    store.review(record_id, approved=True)
+    output = tmp_path / "private" / "approved.jsonl"
+    store.export_approved(output)
+
+    for path in (
+        store.path,
+        output,
+        output.with_suffix(".jsonl.manifest.json"),
+    ):
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+def test_feedback_export_never_overwrites_existing_files(tmp_path):
+    store = FeedbackStore(tmp_path / "feedback.sqlite3")
+    record_id = store.add(
+        consent=True, prompt="Question", response="Wrong",
+        correction="Corrected answer", rating=5, language="en",
+    )
+    store.review(record_id, approved=True)
+    output = tmp_path / "existing.jsonl"
+    output.write_text("preserve this file", encoding="utf-8")
+
+    with pytest.raises(FileExistsError, match="never overwritten"):
+        store.export_approved(output)
+
+    assert output.read_text(encoding="utf-8") == "preserve this file"
+
+
+def test_feedback_database_rejects_symlink_path(tmp_path):
+    import os
+
+    if not hasattr(os, "symlink"):
+        pytest.skip("Symbolic links are unavailable.")
+    target = tmp_path / "actual.sqlite3"
+    link = tmp_path / "feedback-link.sqlite3"
+    target.write_bytes(b"not a database")
+    try:
+        link.symlink_to(target)
+    except OSError:
+        pytest.skip("Creating symbolic links is not permitted.")
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        FeedbackStore(link)
+    assert target.read_bytes() == b"not a database"
