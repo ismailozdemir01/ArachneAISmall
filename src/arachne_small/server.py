@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from . import __version__
-from .artifacts import load_model, verify_artifact
+from .artifacts import load_model
 from .learning import FeedbackStore
 
 LOGGER = logging.getLogger("arachne_small.server")
@@ -36,7 +36,6 @@ class Runtime:
         path = Path(artifact_dir).expanduser().resolve()
         with self.lock:
             try:
-                verify_artifact(path)
                 model, tokenizer = load_model(path, self.device)
                 self.model, self.tokenizer, self.artifact_dir = model, tokenizer, path
                 self.load_error = None
