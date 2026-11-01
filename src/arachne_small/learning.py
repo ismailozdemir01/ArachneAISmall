@@ -196,9 +196,11 @@ class FeedbackStore:
                 temporary_created = True
                 with output_handle as output:
                     rows = db.execute(
-                    "SELECT id,prompt,correction,language,content_sha256 FROM feedback WHERE reviewed=1 AND approved=1 AND exported=0 AND consent=1 AND rating>=? ORDER BY id",
-                    (min_rating,),
-                )
+                        "SELECT id,prompt,correction,language,content_sha256 "
+                        "FROM feedback WHERE reviewed=1 AND approved=1 AND exported=0 "
+                        "AND consent=1 AND rating>=? ORDER BY id",
+                        (min_rating,),
+                    )
                     for row in rows:
                         # Corrections are preferred targets; the original answer is not treated as ground truth.
                         record = {
