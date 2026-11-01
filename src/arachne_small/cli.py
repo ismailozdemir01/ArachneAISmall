@@ -57,6 +57,9 @@ def main() -> None:
     feedback.add_argument("--correction", required=True)
     feedback.add_argument("--rating", type=int, choices=range(1, 6), required=True)
     feedback.add_argument("--language", choices=("tr", "en"), required=True)
+    feedback_list = commands.add_parser("feedback-list", help="List pending feedback records for operator review")
+    feedback_list.add_argument("--database", default="data/feedback.sqlite3")
+    feedback_list.add_argument("--limit", type=int, default=100)
     feedback_review = commands.add_parser("feedback-review", help="Approve or reject one feedback record for training eligibility")
     feedback_review.add_argument("--database", default="data/feedback.sqlite3")
     feedback_review.add_argument("--id", type=int, required=True)
@@ -129,6 +132,9 @@ def main() -> None:
             consent=args.consent, prompt=args.prompt, response=args.response,
             correction=args.correction, rating=args.rating, language=args.language)
         print(json.dumps({"feedback_id": record_id, "stored": True}))
+    elif args.command == "feedback-list":
+        print(json.dumps(FeedbackStore(args.database).list_pending(limit=args.limit),
+                         ensure_ascii=False, indent=2))
     elif args.command == "feedback-review":
         FeedbackStore(args.database).review(args.id, approved=args.approve)
         print(json.dumps({"feedback_id": args.id, "reviewed": True, "approved": args.approve}))
