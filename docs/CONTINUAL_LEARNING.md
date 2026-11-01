@@ -38,7 +38,9 @@ arachne-small learn-cycle \\
   --release-dir artifacts/releases
 ```
 
-The command exports only explicitly reviewed, approved, consented feedback meeting the rating threshold, with hashes, encodes it with the base artifact tokenizer, initializes from verified base weights (not random weights), trains a candidate with a fresh optimizer, evaluates baseline and candidate on the same validation stream, and rejects any candidate whose validation loss exceeds the baseline plus `--max-loss-regression` (default `0.0`). Only a verified candidate that passes the gate is copied to an immutable content-addressed release directory and made current through an atomic pointer update. Feedback is marked consumed only after successful promotion; failed cycles can be retried.
+The command requires a new or empty work directory; it never deletes existing work files. Use a different work directory for each cycle. It exports only explicitly reviewed, approved, consented feedback meeting the rating threshold, with hashes, encodes it with the base artifact tokenizer, initializes from verified base weights (not random weights), trains a candidate with a fresh optimizer, evaluates baseline and candidate on the same validation stream, and rejects any candidate whose validation loss exceeds the baseline plus `--max-loss-regression` (default `0.0`). Only a verified candidate that passes the gate is copied to an immutable content-addressed release directory and made current through an atomic pointer update. Feedback is marked consumed only after successful promotion; failed cycles can be retried.
+
+Feedback exports use private temporary files on POSIX systems and refuse to overwrite an existing destination. Choose a new output filename for every export. Training also refuses to start in a non-empty output directory unless resuming from a compatible checkpoint.
 
 For manual inspection, use `feedback-export`, `evaluate-artifact`, and `promote-candidate` separately. `rollback-release` restores a verified previous version or a specific content-hash version.
 
