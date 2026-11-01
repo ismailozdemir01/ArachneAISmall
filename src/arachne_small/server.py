@@ -196,10 +196,11 @@ async def protect_inference_and_feedback(request: Request, call_next):
         token = _api_token()
         remote_mode = os.environ.get("ARACHNE_SMALL_ALLOW_REMOTE") == "1"
         if remote_mode and (token is None or len(token) < 32):
-            return JSONResponse(status_code=503, content={
-                "detail": "Remote API authentication is not configured securely."
-            })
-        if token is not None:
+            response = JSONResponse(
+                status_code=503,
+                content={"detail": "Remote API authentication is not configured securely."},
+            )
+        elif token is not None:
             authorization = request.headers.get("authorization", "")
             scheme, _, supplied = authorization.partition(" ")
             if scheme.lower() != "bearer" or not supplied or not hmac.compare_digest(supplied, token):
