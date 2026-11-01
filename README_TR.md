@@ -50,7 +50,7 @@ arachne-small count-parameters --config configs/1_5b.yaml
 | Model paketleri | SafeTensors ağırlıkları, tokenizer, model yapılandırması ve SHA-256 manifesti |
 | Paket doğrulama | Dosya bütünlüğü, tokenizer kimliği, tensor adları/şekilleri ve mimari kontrolleri |
 | Çıkarım | FastAPI uç noktaları ve Türkçe/İngilizce tarayıcı arayüzü |
-| Geri bildirim | Açık kullanıcı rızasıyla yerel SQLite kaydı |
+| Geri bildirim | Açık kullanıcı rızasıyla yerel SQLite kaydı; eğitim aktarımından önce zorunlu operatör incelemesi ve onayı |
 | Sürekli öğrenme | Doğrulanmış temel modelden aday eğitim, baseline karşılaştırması, kontrollü yayınlama ve geri alma |
 
 Uygulama ve işletim ayrıntıları `docs/` dizinindedir.
@@ -156,7 +156,7 @@ Ayrıntılar: [Inference API](docs/INFERENCE_API.md).
 
 ## Kontrollü sürekli öğrenme
 
-Geri bildirim süreci isteğe bağlıdır ve yerel ortamda çalışır. Uygun düzeltmeler, doğrulanmış temel modelden başlatılan bir aday modeli eğitmek için kullanılabilir. Aday, aynı doğrulama token akışı üzerinde temel modelle karşılaştırılır. Yapılandırılmış doğrulama kaybı eşiği geçilemezse yayınlama engellenir. Yayımlanan sürümler içerik hash'iyle adreslenir ve doğrulanmış geri alma mekanizmasını destekler.
+Geri bildirim süreci isteğe bağlıdır ve yerel ortamda çalışır. Bir düzeltmenin eğitime aktarılabilmesi için operatör tarafından ayrıca incelenip onaylanması zorunludur. Onaylanan düzeltmeler, doğrulanmış temel modelden başlatılan bir aday modeli eğitmek için kullanılabilir. Aday, aynı doğrulama token akışı üzerinde temel modelle karşılaştırılır. Yapılandırılmış doğrulama kaybı eşiği geçilemezse yayınlama engellenir. Yayımlanan sürümler içerik hash'iyle adreslenir ve doğrulanmış geri alma mekanizmasını destekler.
 
 Bu süreç, önceden eğitilmiş bir temel model paketi ve onunla eşleşen doğrulama verisi gerektirir. Bu özellik, sürekli öğrenmenin yayımlanmış bir model üzerinde hâlihazırda çalıştırıldığı anlamına gelmez.
 
