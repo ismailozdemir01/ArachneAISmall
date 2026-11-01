@@ -133,6 +133,8 @@ def prepare_corpus(
                 raise FileExistsError(f"Prepared dataset output appeared during processing: {final}")
             os.replace(staged, final)
             published_paths.append(final)
+            if os.name == "posix":
+                os.chmod(final, 0o600)
         success = True
         return manifest
     finally:
@@ -163,10 +165,9 @@ def export_text(input_path: str, output_path: str, text_field: str = "text") -> 
     temporary = Path(temporary_name)
     count = 0
     try:
-        with source.open("r", encoding="utf-8") as src, os.fdopen(
-            descriptor, "w", encoding="utf-8", newline="\n"
-        ) as dst:
-            for line_no, line in enumerate(src, 1):
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as dst:
+            with source.open("r", encoding="utf-8") as src:
+                for line_no, line in enumerate(src, 1):
                 if not line.strip():
                     continue
                 try:
