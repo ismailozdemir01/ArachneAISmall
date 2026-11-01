@@ -203,7 +203,9 @@ async def protect_inference_and_feedback(request: Request, call_next):
         elif token is not None:
             authorization = request.headers.get("authorization", "")
             scheme, _, supplied = authorization.partition(" ")
-            if scheme.lower() != "bearer" or not supplied or not hmac.compare_digest(supplied, token):
+            if (scheme.lower() != "bearer" or not supplied
+                    or len(supplied) > 512
+                    or not hmac.compare_digest(supplied.encode("utf-8"), token.encode("utf-8"))):
                 response = JSONResponse(
                     status_code=401,
                     content={"detail": "A valid bearer API token is required."},
