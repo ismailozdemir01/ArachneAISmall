@@ -72,7 +72,7 @@ A compatible runtime must:
 5. Instantiate the decoder architecture with the exact configuration and load SafeTensors weights strictly; missing or unexpected parameter names are fatal.
 6. Keep model weights and tokenizer immutable after validation.
 
-A promoted content-addressed release contains only the four inference files required by the loader (`config.json`, `artifact-manifest.json`, the referenced tokenizer, and the referenced SafeTensors weights). Training logs and optimizer checkpoints are intentionally excluded from promoted runtime releases.
+A promoted content-addressed release contains only the four inference files required by the loader (`config.json`, `artifact-manifest.json`, the referenced tokenizer, and the referenced SafeTensors weights). Its directory identifier hashes the complete inference identity (configuration checksum, artifact-manifest checksum, tokenizer checksum, and weights checksum), not the weights alone. Training logs and optimizer checkpoints are intentionally excluded from promoted runtime releases.
 
 The architecture state-dictionary names are the names emitted by `arachne_small.model.ArachneSmall`. The runtime must implement the same RMSNorm, RoPE, grouped-query causal attention, SwiGLU, residual ordering, embedding policy, and parameter names.
 
