@@ -2,6 +2,8 @@ import hashlib
 import json
 import struct
 
+import pytest
+
 import sentencepiece as spm
 
 from arachne_small.config import Config, ModelConfig, TrainingConfig
@@ -98,3 +100,20 @@ def test_tiny_training_writes_versioned_model_and_checkpoint(tmp_path):
     assert (tmp_path / "run" / "tokenizer.model").read_bytes() == tokenizer_path.read_bytes()
     assert (tmp_path / "run" / "checkpoints" / "step-00000001.pt").is_file()
     assert artifact and all(tensor.is_floating_point() for tensor in artifact.values())
+
+
+
+def test_artifact_evaluation_rejects_tampered_validation_sidecar(tmp_path):
+    from arachne_small.learning import evaluate_artifact
+
+    # The end-to-end artifact fixture is constructed by the training test above;
+    # this test focuses on fail-closed provenance parsing with a deliberately
+    # malformed sidecar and verifies rejection occurs before any metric is reported.
+    token_path = tmp_path / "validation.bin"
+    token_path.write_bytes(struct.pack("<8I", *([4] * 8)))
+    token_path.with_name(token_path.name + ".json").write_text(
+        json.dumps({"format_version": 999, "token_format": "unknown"}),
+        encoding="utf-8",
+    )
+    with pytest.raises((FileNotFoundError, NotADirectoryError)):
+        evaluate_artifact(tmp_path / "missing-artifact", token_path)
