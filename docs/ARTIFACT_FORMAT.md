@@ -3,7 +3,7 @@
 **Format identifier:** `arachne-small`  
 **Format version:** `1`
 
-A completed training run writes an inference package into the configured `output_dir`:
+A completed training run writes a training output directory into the configured `output_dir`:
 
 ```text
 output_dir/
@@ -71,6 +71,8 @@ A compatible runtime must:
 4. Verify tokenizer vocabulary size equals `model.vocab_size`.
 5. Instantiate the decoder architecture with the exact configuration and load SafeTensors weights strictly; missing or unexpected parameter names are fatal.
 6. Keep model weights and tokenizer immutable after validation.
+
+A promoted content-addressed release contains only the four inference files required by the loader (`config.json`, `artifact-manifest.json`, the referenced tokenizer, and the referenced SafeTensors weights). Training logs and optimizer checkpoints are intentionally excluded from promoted runtime releases.
 
 The architecture state-dictionary names are the names emitted by `arachne_small.model.ArachneSmall`. The runtime must implement the same RMSNorm, RoPE, grouped-query causal attention, SwiGLU, residual ordering, embedding policy, and parameter names.
 
