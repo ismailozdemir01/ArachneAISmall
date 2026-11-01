@@ -309,6 +309,18 @@ def evaluate_artifact(artifact: str | Path, validation_tokens: str | Path,
     }
 
 
+def _release_content_hash(summary: dict[str, Any]) -> str:
+    identity = {
+        "format": "arachne-small-release-content",
+        "model_config_sha256": summary["model_config_sha256"],
+        "artifact_manifest_sha256": summary["artifact_manifest_sha256"],
+        "tokenizer_sha256": summary["tokenizer_sha256"],
+        "weights_sha256": summary["weights_sha256"],
+    }
+    canonical = json.dumps(identity, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def promote_candidate(candidate: str | Path, baseline: str | Path,
                       validation_tokens: str | Path, release_dir: str | Path,
                       *, max_loss_regression: float = 0.0,
@@ -348,9 +360,9 @@ def promote_candidate(candidate: str | Path, baseline: str | Path,
         raise ValueError("Release directory must not overlap candidate or baseline artifacts.")
     release.mkdir(parents=True, exist_ok=True)
     import shutil
-    version = candidate_metrics["weights_sha256"]
-    baseline_version = baseline_metrics["weights_sha256"]
-    if version == baseline_version:
+    version = _release_content_hash(candidate_summary)
+    baseline_version = _release_content_hash(baseline_summary)
+    if candidate_summary["weights_sha256"] == baseline_summary["weights_sha256"]:
         raise RuntimeError("Candidate weights are identical to the baseline; no release was created.")
 
     def install_immutable(source: Path, digest: str) -> None:
@@ -358,8 +370,8 @@ def promote_candidate(candidate: str | Path, baseline: str | Path,
         if destination.is_symlink():
             raise ValueError("Content-addressed release directories cannot be symbolic links.")
         if destination.exists():
-            verify_artifact(destination)
-            if verify_artifact(destination)["weights_sha256"] != digest:
+            existing_summary = verify_artifact(destination)
+            if _release_content_hash(existing_summary) != digest:
                 raise ValueError("Content-addressed release directory contains the wrong artifact.")
             return
         staging = release / (digest + ".staging")
@@ -382,7 +394,7 @@ def promote_candidate(candidate: str | Path, baseline: str | Path,
                 shutil.copyfile(source / filename, staging / filename)
                 if os.name == "posix":
                     os.chmod(staging / filename, 0o600)
-            if verify_artifact(staging)["weights_sha256"] != digest:
+            if _release_content_hash(verify_artifact(staging)) != digest:
                 raise ValueError("Staged release artifact hash does not match its content address.")
             os.replace(staging, destination)
         except Exception:
@@ -424,8 +436,8 @@ def _read_release_version(release: Path) -> str | None:
             or version_path.is_symlink() or not version_path.is_dir()):
         raise ValueError("Existing release pointer is invalid; refusing to overwrite it.")
     summary = verify_artifact(version_path)
-    if summary["weights_sha256"] != version:
-        raise ValueError("Release directory name does not match its artifact weight hash.")
+    if _release_content_hash(summary) != version:
+        raise ValueError("Release directory name does not match its complete inference artifact hash.")
     return version
 
 
@@ -467,8 +479,8 @@ def rollback_release(release_dir: str | Path, version: str | None = None) -> dic
     if not target_path.is_dir():
         raise FileNotFoundError(f"Release version does not exist: {target}")
     target_summary = verify_artifact(target_path)
-    if target_summary["weights_sha256"] != target:
-        raise ValueError("Rollback target directory does not match its artifact weight hash.")
+    if _release_content_hash(target_summary) != target:
+        raise ValueError("Rollback target directory does not match its complete inference artifact hash.")
     pointer.update({
         "previous_version": current,
         "version": target,
