@@ -23,7 +23,10 @@ class FeedbackStore:
     """Explicit-consent, local-only store for reviewed training examples."""
 
     def __init__(self, path: str | Path) -> None:
-        self.path = Path(path).expanduser().resolve()
+        requested_path = Path(path).expanduser()
+        if requested_path.is_symlink():
+            raise ValueError("Feedback database path cannot be a symbolic link.")
+        self.path = requested_path.resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as db:
             db.execute("""
@@ -56,6 +59,10 @@ class FeedbackStore:
         try:
             db.execute("PRAGMA journal_mode=WAL")
             db.execute("PRAGMA foreign_keys=ON")
+            db.execute("PRAGMA secure_delete=ON")
+            self._secure_private_file(self.path)
+            self._secure_private_file(Path(str(self.path) + "-wal"))
+            self._secure_private_file(Path(str(self.path) + "-shm"))
             yield db
             db.commit()
         except Exception:
@@ -63,6 +70,21 @@ class FeedbackStore:
             raise
         finally:
             db.close()
+
+    @staticmethod
+    def _secure_private_file(path: Path) -> None:
+        if os.name == "posix" and path.exists():
+            os.chmod(path, 0o600)
+
+    @staticmethod
+    def _open_private_temp(path: Path):
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        descriptor = os.open(path, flags, 0o600)
+        if os.name == "posix":
+            os.fchmod(descriptor, 0o600)
+        return os.fdopen(descriptor, "w", encoding="utf-8")
 
     @staticmethod
     def _validate_text(name: str, value: str, limit: int) -> str:
@@ -159,7 +181,7 @@ class FeedbackStore:
         count = 0
         hashes: list[str] = []
         try:
-            with self._connect() as db, temporary.open("w", encoding="utf-8") as output:
+            with self._connect() as db, self._open_private_temp(temporary) as output:
                 rows = db.execute(
                     "SELECT id,prompt,correction,language,content_sha256 FROM feedback WHERE reviewed=1 AND approved=1 AND exported=0 AND consent=1 AND rating>=? ORDER BY id",
                     (min_rating,),
@@ -194,7 +216,10 @@ class FeedbackStore:
         manifest_path = target.with_suffix(target.suffix + ".manifest.json")
         tmp_manifest = manifest_path.with_name(manifest_path.name + ".tmp")
         try:
-            tmp_manifest.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            with self._open_private_temp(tmp_manifest) as output:
+                output.write(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
+                output.flush()
+                os.fsync(output.fileno())
             os.replace(tmp_manifest, manifest_path)
         finally:
             tmp_manifest.unlink(missing_ok=True)
@@ -367,20 +392,36 @@ def run_learning_cycle(*, database: str | Path, base_artifact: str | Path,
     tokenizer_path = base / artifact_config["tokenizer"]["file"]
     tokenizer = __import__("sentencepiece").SentencePieceProcessor(model_file=str(tokenizer_path))
     work = Path(work_dir).expanduser().resolve()
-    work.mkdir(parents=True, exist_ok=True)
+    release = Path(release_dir).expanduser().resolve()
+    validation = Path(validation_tokens).expanduser().resolve()
+
+    def overlaps(left: Path, right: Path) -> bool:
+        return left == right or left in right.parents or right in left.parents
+
+    for label, protected in (("base artifact", base), ("release directory", release),
+                             ("validation token file", validation)):
+        if overlaps(work, protected):
+            raise ValueError(f"Work directory must not overlap the {label} path.")
+    if overlaps(base, release):
+        raise ValueError("Base artifact and release directory must not overlap.")
+    if work.exists():
+        if not work.is_dir():
+            raise NotADirectoryError(work)
+        if any(work.iterdir()):
+            raise FileExistsError(
+                f"Learning work directory is not empty: {work}. "
+                "Use a new directory for each learning cycle; existing files are preserved."
+            )
+    else:
+        work.mkdir(parents=True, exist_ok=False)
     export_path = work / "approved-feedback.jsonl"
     manifest = FeedbackStore(database).export_approved(export_path, min_rating=min_rating)
     if manifest["records"] == 0:
         raise RuntimeError("No new consented feedback meets the minimum rating; no training was started.")
     train_tokens = work / "feedback-train.bin"
-    train_tokens.with_name(train_tokens.name + ".json").unlink(missing_ok=True)
-    train_tokens.unlink(missing_ok=True)
     encode_jsonl(str(export_path), str(train_tokens), str(tokenizer_path), "text", tokenizer.eos_id())
     config = load_config(config_path)
     training_output = work / "candidate"
-    if training_output.exists():
-        import shutil
-        shutil.rmtree(training_output)
     candidate_config = replace(config, training=replace(config.training, output_dir=str(training_output)))
     from .trainer import train
     train(candidate_config, str(train_tokens), str(validation_tokens),
