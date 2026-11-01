@@ -111,6 +111,17 @@ class FeedbackStore:
             row = db.execute("SELECT id FROM feedback WHERE content_sha256=?", (digest,)).fetchone()
             return int(row["id"])
 
+    def list_pending(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
+            raise ValueError("limit must be an integer between 1 and 1000.")
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT id,created_at,prompt,response,correction,rating,language "
+                "FROM feedback WHERE reviewed=0 AND consent=1 ORDER BY id LIMIT ?",
+                (limit,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
     def review(self, record_id: int, *, approved: bool) -> None:
         if isinstance(record_id, bool) or not isinstance(record_id, int) or record_id < 1:
             raise ValueError("record_id must be a positive integer.")
