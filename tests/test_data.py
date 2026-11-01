@@ -44,7 +44,7 @@ def test_encode_jsonl_records_tokenizer_and_file_provenance(tmp_path):
     )
     prefix = tmp_path / "tokenizer"
     spm.SentencePieceTrainer.train(
-        input=str(corpus), model_prefix=str(prefix), vocab_size=64,
+        input=str(corpus), model_prefix=str(prefix), vocab_size=80,
         model_type="bpe", character_coverage=1.0,
         pad_id=0, unk_id=1, bos_id=2, eos_id=3, hard_vocab_limit=False,
     )
