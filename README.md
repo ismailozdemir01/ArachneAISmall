@@ -186,4 +186,8 @@ A trained release requires an actual training run, recorded evaluation metrics, 
 
 ## License
 
-No code license has been selected for this repository yet. Public visibility alone does not grant permission to reuse, modify, or redistribute the code. A license must be added before the project can accurately be described as open source.
+The ArachneAISmall source code in this repository is licensed under the **Apache License 2.0**. You may use, modify, and distribute the code under its terms. The license includes an express patent grant and requires preservation of applicable notices and provision of the license with redistributed copies.
+
+See [LICENSE](LICENSE) for the complete terms.
+
+The license for this repository's code does not automatically apply to external datasets, third-party assets, or future trained model weights. Those materials must carry their own applicable license and usage terms.
