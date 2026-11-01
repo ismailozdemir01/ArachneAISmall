@@ -65,10 +65,11 @@ def test_export_uses_corrections_and_only_eligible_unexported_records(tmp_path):
 
 def test_feedback_export_manifest_hash_matches_file(tmp_path):
     store = FeedbackStore(tmp_path / "feedback.sqlite3")
-    store.add(
+    record_id = store.add(
         consent=True, prompt="Question", response="Response",
         correction="Correction", rating=4, language="en",
     )
+    store.review(record_id, approved=True)
     output = tmp_path / "approved.jsonl"
     manifest = store.export_approved(output)
     import hashlib
