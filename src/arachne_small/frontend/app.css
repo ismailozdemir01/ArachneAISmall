@@ -34,3 +34,28 @@
 }
 .feedback-form button { cursor: pointer; }
 .feedback-form button:disabled { opacity: 0.55; cursor: default; }
+
+
+.api-token-wrap {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 1.2rem;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+}
+.api-token-wrap[hidden] { display: none; }
+.api-token-wrap label { color: var(--muted); font-size: 0.72rem; }
+.api-token-wrap input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0.55rem;
+  color: var(--text);
+  background: var(--panel2);
+  font: inherit;
+  font-size: 0.75rem;
+}
+.api-token-wrap small { color: var(--muted); font-size: 0.65rem; line-height: 1.5; }
