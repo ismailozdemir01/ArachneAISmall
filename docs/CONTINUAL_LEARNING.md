@@ -11,7 +11,17 @@ arachne-small feedback-add --database data/feedback.sqlite3 --consent \\
   --prompt "..." --response "..." --correction "..." --rating 5 --language tr
 ```
 
-Only consented entries rated at or above the configured threshold are eligible. Corrections, not the model's original answer, become the target text. The response is retained for audit context but is not treated as ground truth.
+Consent alone does not make a record trainable. Every record must first be explicitly reviewed and approved by an operator; rejected and pending records are excluded. A rating threshold is an additional filter, not an approval substitute. Corrections, not the model's original answer, become the target text. The response is retained for audit context but is not treated as ground truth.
+
+Review records individually before export:
+
+```bash
+arachne-small feedback-review --database data/feedback.sqlite3 --id 12 --approve
+arachne-small feedback-review --database data/feedback.sqlite3 --id 13 --reject
+arachne-small feedback-export --database data/feedback.sqlite3 --output data/approved-feedback.jsonl --min-rating 4
+```
+
+Only reviewed and approved records meeting the minimum rating are exported. Once a record has been consumed by a successfully promoted cycle, it cannot be re-reviewed.
 
 ## 2. Run a continual-learning cycle
 
@@ -27,7 +37,7 @@ arachne-small learn-cycle \\
   --release-dir artifacts/releases
 ```
 
-The command exports newly eligible consented feedback with hashes, encodes it with the base artifact tokenizer, initializes from verified base weights (not random weights), trains a candidate with a fresh optimizer, evaluates baseline and candidate on the same validation stream, and rejects any candidate whose validation loss exceeds the baseline plus `--max-loss-regression` (default `0.0`). Only a verified candidate that passes the gate is copied to an immutable content-addressed release directory and made current through an atomic pointer update. Feedback is marked consumed only after successful promotion; failed cycles can be retried.
+The command exports only explicitly reviewed, approved, consented feedback meeting the rating threshold, with hashes, encodes it with the base artifact tokenizer, initializes from verified base weights (not random weights), trains a candidate with a fresh optimizer, evaluates baseline and candidate on the same validation stream, and rejects any candidate whose validation loss exceeds the baseline plus `--max-loss-regression` (default `0.0`). Only a verified candidate that passes the gate is copied to an immutable content-addressed release directory and made current through an atomic pointer update. Feedback is marked consumed only after successful promotion; failed cycles can be retried.
 
 For manual inspection, use `feedback-export`, `evaluate-artifact`, and `promote-candidate` separately. `rollback-release` restores a verified previous version or a specific content-hash version.
 
