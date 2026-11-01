@@ -37,8 +37,8 @@ def prepare_corpus(
     destination = requested_destination.resolve()
     if not source_path.is_file():
         raise FileNotFoundError(source_path)
-    if not text_field:
-        raise ValueError("text_field must not be empty.")
+    if not isinstance(text_field, str) or not text_field.strip():
+        raise ValueError("text_field must be a non-empty string.")
     if not 0 < validation_fraction < 0.5:
         raise ValueError("validation_fraction must be greater than 0 and less than 0.5.")
     if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
@@ -60,10 +60,11 @@ def prepare_corpus(
     ]
     input_digest = hashlib.sha256()
     train_count = validation_count = duplicate_count = skipped_count = 0
-    connection = sqlite3.connect(database_path)
+    connection = None
     published_paths: list[Path] = []
     success = False
     try:
+        connection = sqlite3.connect(database_path)
         connection.execute("PRAGMA journal_mode=OFF")
         connection.execute("PRAGMA synchronous=OFF")
         connection.execute("CREATE TABLE seen (digest TEXT PRIMARY KEY) WITHOUT ROWID")
@@ -135,7 +136,8 @@ def prepare_corpus(
         success = True
         return manifest
     finally:
-        connection.close()
+        if connection is not None:
+            connection.close()
         if not success:
             for path in published_paths:
                 path.unlink(missing_ok=True)
@@ -150,11 +152,20 @@ def export_text(input_path: str, output_path: str, text_field: str = "text") -> 
         raise FileNotFoundError(source)
     if not text_field:
         raise ValueError("text_field must not be empty.")
+    if target.is_symlink():
+        raise ValueError("Text export destination cannot be a symbolic link.")
     target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_name(target.name + ".tmp")
+    if target.exists():
+        raise FileExistsError(f"Text export destination already exists: {target}")
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{target.name}.", suffix=".tmp", dir=target.parent
+    )
+    temporary = Path(temporary_name)
     count = 0
     try:
-        with source.open("r", encoding="utf-8") as src, temporary.open("w", encoding="utf-8", newline="\n") as dst:
+        with source.open("r", encoding="utf-8") as src, os.fdopen(
+            descriptor, "w", encoding="utf-8", newline="\n"
+        ) as dst:
             for line_no, line in enumerate(src, 1):
                 if not line.strip():
                     continue
@@ -170,7 +181,11 @@ def export_text(input_path: str, output_path: str, text_field: str = "text") -> 
                     count += 1
         if count == 0:
             raise ValueError(f"No usable text documents were found in {source}")
+        if target.exists() or target.is_symlink():
+            raise FileExistsError(f"Text export destination appeared during processing: {target}")
         os.replace(temporary, target)
+        if os.name == "posix":
+            os.chmod(target, 0o600)
         return count
     finally:
         temporary.unlink(missing_ok=True)
