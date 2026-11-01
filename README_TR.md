@@ -140,7 +140,7 @@ Tarayıcıdan [http://127.0.0.1:8000](http://127.0.0.1:8000) adresini açın.
 
 Web arayüzü gerçek çıkarım API'sine bağlanır; sahte veya simüle edilmiş model yanıtı üretmez. Doğrulanmış model paketi bulunmuyorsa metin üretimi kullanılamaz ve API HTTP 503 döndürür.
 
-Sunucu varsayılan olarak yalnızca loopback arayüzünde dinler. Uzak erişim açıkça etkinleştirilmelidir; uzaktan yayın için kimlik doğrulamalı TLS reverse proxy ve ağ erişim denetimleri kullanılmalıdır.
+Sunucu varsayılan olarak yalnızca loopback arayüzünde dinler. Uzak erişim için açık izin, en az 32 karakterlik benzersiz bir `ARACHNE_SMALL_API_TOKEN` ve metin üretimi/geri bildirim isteklerinde Bearer kimlik doğrulaması zorunludur. Ayrıca TLS, kimlik doğrulamalı reverse proxy ve ağ erişim denetimleri kullanılmalıdır.
 
 ### API uç noktaları
 
@@ -172,9 +172,9 @@ Ayrıntılar: [Kontrollü Sürekli Öğrenme](docs/CONTINUAL_LEARNING.md).
 
 ## Test ve yayın durumu
 
-Mevcut otomatik test paketi Python 3.14.7 ve CPU tabanlı PyTorch ile yerel ortamda çalıştırıldı: **33 test başarılı**. Aynı ortamda Python bytecode derleme kontrolü ve komut satırı yardım kontrolü de başarıyla tamamlandı.
+Önceki yerel temel test çalıştırmasında Python 3.14.7 ve CPU tabanlı PyTorch ile **33 test başarılı** olmuş; bytecode derleme ve komut satırı yardım kontrolleri de tamamlanmıştır. Sonraki güvenlik ve entegrasyon iyileştirmeleri yeni testler ekledi ve bazı kod yollarını değiştirdi. Bu son değişiklikler **henüz çalıştırılmadı**; bir sonraki yerel PC test oturumunda doğrulanmalıdır.
 
-Bu kontroller yalnızca test paketinin kapsadığı yazılım davranışlarını doğrular. **Eğitilmiş model değerlendirmesi, benchmark, hız ölçümü veya Türkçe/İngilizce dil kalitesi kanıtı değildir.** Bu depoda şu anda eğitilmiş ağırlıklar veya eğitim korpusu yayımlanmamıştır.
+Yazılım testleri **eğitilmiş model değerlendirmesi, benchmark, hız ölçümü veya Türkçe/İngilizce dil kalitesi kanıtı değildir.** Bu depoda şu anda eğitilmiş ağırlıklar veya eğitim korpusu yayımlanmamıştır.
 
 Eğitilmiş bir sürüm yayımlanmadan önce gerçek eğitim çalıştırması, ölçümlenmiş değerlendirme sonuçları, model paketi doğrulaması ve donanım performans ölçümleri gereklidir.
 
