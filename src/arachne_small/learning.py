@@ -175,35 +175,49 @@ class FeedbackStore:
     def export_approved(self, destination: str | Path, *, min_rating: int = 4) -> dict[str, Any]:
         if isinstance(min_rating, bool) or not isinstance(min_rating, int) or not 1 <= min_rating <= 5:
             raise ValueError("min_rating must be between 1 and 5.")
-        target = Path(destination).expanduser().resolve()
+        requested_target = Path(destination).expanduser()
+        if requested_target.is_symlink():
+            raise ValueError("Feedback export destination cannot be a symbolic link.")
+        target = requested_target.resolve()
         target.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path = target.with_suffix(target.suffix + ".manifest.json")
+        if target.exists() or manifest_path.exists():
+            raise FileExistsError(
+                f"Feedback export destination already exists: {target}. "
+                "Choose a new output path; existing exports are never overwritten."
+            )
         temporary = target.with_name(target.name + ".tmp")
         count = 0
         hashes: list[str] = []
+        temporary_created = False
         try:
-            with self._connect() as db, self._open_private_temp(temporary) as output:
-                rows = db.execute(
+            with self._connect() as db:
+                output_handle = self._open_private_temp(temporary)
+                temporary_created = True
+                with output_handle as output:
+                    rows = db.execute(
                     "SELECT id,prompt,correction,language,content_sha256 FROM feedback WHERE reviewed=1 AND approved=1 AND exported=0 AND consent=1 AND rating>=? ORDER BY id",
                     (min_rating,),
                 )
-                for row in rows:
-                    # Corrections are preferred targets; the original answer is not treated as ground truth.
-                    record = {
-                        "text": f"<|language:{row['language']}|>\nUser: {row['prompt']}\nAssistant: {row['correction']}",
-                        "provenance": {
-                            "source": "explicit-user-feedback",
-                            "feedback_id": row["id"],
-                            "content_sha256": row["content_sha256"],
-                        },
-                    }
-                    output.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + "\n")
-                    count += 1
-                    hashes.append(row["content_sha256"])
-                output.flush()
-                os.fsync(output.fileno())
-            os.replace(temporary, target)
+                    for row in rows:
+                        # Corrections are preferred targets; the original answer is not treated as ground truth.
+                        record = {
+                            "text": f"<|language:{row['language']}|>\nUser: {row['prompt']}\nAssistant: {row['correction']}",
+                            "provenance": {
+                                "source": "explicit-user-feedback",
+                                "feedback_id": row["id"],
+                                "content_sha256": row["content_sha256"],
+                            },
+                        }
+                        output.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + "\n")
+                        count += 1
+                        hashes.append(row["content_sha256"])
+                    output.flush()
+                    os.fsync(output.fileno())
+                os.replace(temporary, target)
         finally:
-            temporary.unlink(missing_ok=True)
+            if temporary_created:
+                temporary.unlink(missing_ok=True)
         manifest = {
             "format": "arachne-small-feedback-export",
             "format_version": 1,
@@ -213,16 +227,19 @@ class FeedbackStore:
             "export_sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
             "created_at": int(time.time()),
         }
-        manifest_path = target.with_suffix(target.suffix + ".manifest.json")
         tmp_manifest = manifest_path.with_name(manifest_path.name + ".tmp")
+        manifest_temp_created = False
         try:
-            with self._open_private_temp(tmp_manifest) as output:
+            output_handle = self._open_private_temp(tmp_manifest)
+            manifest_temp_created = True
+            with output_handle as output:
                 output.write(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
                 output.flush()
                 os.fsync(output.fileno())
             os.replace(tmp_manifest, manifest_path)
         finally:
-            tmp_manifest.unlink(missing_ok=True)
+            if manifest_temp_created:
+                tmp_manifest.unlink(missing_ok=True)
         return manifest
 
 
