@@ -20,7 +20,8 @@ const translations = {
     checking:"Model durumu kontrol ediliyor",ready:"Model hazır",missing:"Eğitilmiş model artifact'ı yüklenmemiş",error:"Model yükleme hatası",
     user:"Siz",assistant:"Arachne Small",thinking:"Yanıt üretiliyor…",unavailable:"Model hazır değil. Önce eğitilmiş artifact'ı sunucuya yükleyin.",
     requestFailed:"İstek başarısız oldu",newConversation:"Yeni sohbet başlatıldı",empty:"Lütfen bir mesaj yazın.",
-    feedbackTitle:"Yanıtı iyileştirmeye katkı ver",correctionPlaceholder:"Düzeltilmiş yanıtı yazın...",consentText:"Bu düzeltmenin model eğitimi için yerel olarak saklanmasına açıkça izin veriyorum.",saveFeedback:"Düzeltmeyi gönder",feedbackSaved:"Düzeltme kaydedildi",feedbackFailed:"Düzeltme kaydedilemedi"
+    feedbackTitle:"Yanıtı iyileştirmeye katkı ver",correctionPlaceholder:"Düzeltilmiş yanıtı yazın...",consentText:"Bu düzeltmenin model eğitimi için yerel olarak saklanmasına açıkça izin veriyorum.",saveFeedback:"Düzeltmeyi gönder",feedbackSaved:"Düzeltme kaydedildi",feedbackFailed:"Düzeltme kaydedilemedi",
+    apiTokenLabel:"API erişim anahtarı",apiTokenPlaceholder:"Bearer API token",apiTokenNote:"Anahtar yalnızca bu sayfa açıkken bellekte tutulur."
   },
   en: {
     newChat:"New chat",runtime:"RUNTIME STATUS",model:"Model",device:"Device",parameters:"Parameters",context:"Context",
@@ -32,7 +33,8 @@ const translations = {
     checking:"Checking model status",ready:"Model ready",missing:"No trained model artifact loaded",error:"Model loading error",
     user:"You",assistant:"Arachne Small",thinking:"Generating response…",unavailable:"Model is not ready. Load a trained artifact on the server first.",
     requestFailed:"Request failed",newConversation:"New conversation started",empty:"Please enter a message.",
-    feedbackTitle:"Help improve the response",correctionPlaceholder:"Write the corrected answer...",consentText:"I explicitly consent to storing this correction locally for model training.",saveFeedback:"Submit correction",feedbackSaved:"Correction saved",feedbackFailed:"Could not save correction"
+    feedbackTitle:"Help improve the response",correctionPlaceholder:"Write the corrected answer...",consentText:"I explicitly consent to storing this correction locally for model training.",saveFeedback:"Submit correction",feedbackSaved:"Correction saved",feedbackFailed:"Could not save correction",
+    apiTokenLabel:"API access token",apiTokenPlaceholder:"Bearer API token",apiTokenNote:"The token stays in memory only while this page is open."
   }
 };
 const t = (key) => translations[uiLanguage][key] || key;
@@ -93,6 +95,7 @@ async function refreshStatus() {
     $("#parameter-value").textContent = data.parameter_count ? Number(data.parameter_count).toLocaleString() : "—";
     $("#context-value").textContent = data.context_length ? `${data.context_length.toLocaleString()} tokens` : "—";
     $("#version-value").textContent = data.version ? `v${data.version}` : "v—";
+    $("#api-token-wrap").hidden = !data.authentication_required;
     sendButton.disabled = !data.ready || busy;
     if (data.load_error) console.error("Arachne Small load error:", data.load_error);
   } catch (error) {
@@ -116,7 +119,11 @@ async function submitPrompt(value) {
   try {
     const response = await fetch("/api/generate", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...($("#api-token").value.trim() ? { Authorization: `Bearer ${$("#api-token").value.trim()}` } : {})
+      },
       body: JSON.stringify({
         prompt,
         history: conversationHistory.slice(-20),
@@ -171,7 +178,11 @@ async function submitPrompt(value) {
         try {
           const feedbackResponse = await fetch("/api/feedback", {
             method: "POST",
-            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+              ...($("#api-token").value.trim() ? { Authorization: `Bearer ${$("#api-token").value.trim()}` } : {})
+            },
             body: JSON.stringify({
               consent: consent.checked,
               prompt,
