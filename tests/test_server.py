@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from arachne_small.server import app, runtime
@@ -100,3 +101,46 @@ def test_feedback_endpoint_rejects_sensitive_content(tmp_path, monkeypatch):
     with TestClient(app) as client:
         response = client.post("/api/feedback", json=payload)
     assert response.status_code == 422
+
+
+
+def test_remote_protected_endpoints_require_a_bearer_token(tmp_path, monkeypatch):
+    token = "a" * 48
+    monkeypatch.delenv("ARACHNE_SMALL_ALLOW_REMOTE", raising=False)
+    monkeypatch.setenv("ARACHNE_SMALL_API_TOKEN", token)
+    monkeypatch.setenv("ARACHNE_SMALL_FEEDBACK_DB", str(tmp_path / "feedback.sqlite3"))
+    payload = {
+        "consent": True,
+        "prompt": "Question",
+        "response": "An incorrect answer",
+        "correction": "A corrected answer",
+        "rating": 5,
+        "language": "en",
+    }
+    with TestClient(app) as client:
+        denied = client.post("/api/feedback", json=payload)
+        wrong = client.post("/api/feedback", json=payload,
+                            headers={"Authorization": "Bearer " + "b" * 48})
+        accepted = client.post("/api/feedback", json=payload,
+                               headers={"Authorization": f"Bearer {token}"})
+        status = client.get("/api/status")
+
+    assert denied.status_code == 401
+    assert wrong.status_code == 401
+    assert accepted.status_code == 200
+    assert status.json()["authentication_required"] is True
+
+
+def test_remote_mode_fails_startup_without_a_strong_api_token(monkeypatch):
+    monkeypatch.setenv("ARACHNE_SMALL_ALLOW_REMOTE", "1")
+    monkeypatch.delenv("ARACHNE_SMALL_API_TOKEN", raising=False)
+    with pytest.raises(RuntimeError, match="at least 32 characters"):
+        with TestClient(app):
+            pass
+
+
+def test_frontend_exposes_token_input_for_authenticated_remote_use():
+    with TestClient(app) as client:
+        response = client.get("/")
+    assert response.status_code == 200
+    assert 'id="api-token"' in response.text
