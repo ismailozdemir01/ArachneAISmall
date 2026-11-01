@@ -140,7 +140,7 @@ Open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 
 The web interface calls the actual inference API. It does not provide placeholder or simulated model answers. If a verified model artifact is unavailable, generation is disabled and the API returns HTTP 503.
 
-The server binds to loopback by default. Remote binding requires explicit opt-in; any remote deployment must use an authenticated TLS reverse proxy and network access controls.
+The server binds to loopback by default. Remote binding requires explicit opt-in, a unique `ARACHNE_SMALL_API_TOKEN` of at least 32 characters, and Bearer authentication for generation/feedback requests. Remote deployment must also use TLS, an authenticated reverse proxy, and network access controls.
 
 ### API endpoints
 
@@ -172,9 +172,9 @@ See [Controlled Continual Learning](docs/CONTINUAL_LEARNING.md).
 
 ## Validation and release status
 
-The current automated test suite was run locally on Python 3.14.7 with CPU-only PyTorch: **33 tests passed**. Python bytecode compilation and the command-line help check also completed successfully in that environment.
+A previous local baseline run on Python 3.14.7 with CPU-only PyTorch completed with **33 tests passed**, plus Python bytecode compilation and command-line help checks. Subsequent security and integration hardening added further tests and changed several code paths; those latest changes have **not yet been executed** and must be verified in the next local PC test session.
 
-These checks validate software behavior covered by the test suite. They are **not** a trained-model evaluation, benchmark, throughput measurement, or evidence of Turkish/English language quality. No trained weights or training corpus are currently published in this repository.
+Software tests are **not** a trained-model evaluation, benchmark, throughput measurement, or evidence of Turkish/English language quality. No trained weights or training corpus are currently published in this repository.
 
 A trained release requires an actual training run, recorded evaluation metrics, artifact verification, and hardware performance measurements.
 
