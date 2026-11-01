@@ -102,6 +102,7 @@ The API validates text length, language, rating, obvious credential/contact-data
 - The browser UI inserts user and model text using DOM text nodes, not HTML interpretation.
 - The UI sends a bounded previous-turn history with each generation request; history is held in browser memory and cleared by starting a new chat. No conversation content is persisted on the server or across page reloads.
 - The API currently provides synchronous generation, not token streaming or multi-user scheduling.
-- On POSIX systems, feedback database, WAL/SHM, and export temporary files are restricted to owner-only permissions. SQLite secure deletion is enabled; filesystem snapshots and backups remain the operator's responsibility.
+- On POSIX systems, feedback database, WAL/SHM, and export files are restricted to owner-only permissions. SQLite secure deletion is enabled; filesystem snapshots and backups remain the operator's responsibility.
+- API responses include anti-sniffing, anti-framing, and no-referrer headers. API responses are marked `Cache-Control: no-store` to reduce accidental caching of prompt and feedback data.
 
 A trained artifact is a prerequisite for inference. A configured architecture or an untrained checkpoint must not be represented as a released trained model.
