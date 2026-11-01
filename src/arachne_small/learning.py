@@ -6,6 +6,7 @@ import math
 import os
 import re
 import sqlite3
+import tempfile
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -429,11 +430,19 @@ def _read_release_version(release: Path) -> str | None:
 
 
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
-    temporary = path.with_name(path.name + ".tmp")
+    if path.is_symlink():
+        raise ValueError("Atomic JSON destination cannot be a symbolic link.")
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(temporary_name)
     try:
-        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8")
-        with temporary.open("rb") as handle:
-            os.fsync(handle.fileno())
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            output.write(json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False) + "\n")
+            output.flush()
+            os.fsync(output.fileno())
+        if path.is_symlink():
+            raise ValueError("Atomic JSON destination became a symbolic link.")
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
