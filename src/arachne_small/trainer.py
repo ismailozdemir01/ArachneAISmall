@@ -1,4 +1,4 @@
-import math, random, json, os
+import math, random, json, os, tempfile
 from pathlib import Path
 import torch
 import sentencepiece as spm
@@ -22,9 +22,15 @@ def _lr(step: int, total: int, warmup: int, peak: float, floor: float) -> float:
     return floor + 0.5 * (peak - floor) * (1.0 + math.cos(math.pi * progress))
 
 def _atomic_torch_save(payload: dict, destination: Path) -> None:
-    temporary = destination.with_name(destination.name + ".tmp")
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent
+    )
+    temporary = Path(temporary_name)
     try:
-        torch.save(payload, temporary)
+        with os.fdopen(descriptor, "wb") as output:
+            torch.save(payload, output)
+            output.flush()
+            os.fsync(output.fileno())
         os.replace(temporary, destination)
     finally:
         temporary.unlink(missing_ok=True)
@@ -85,22 +91,28 @@ def _truncate_training_log(path: Path, checkpoint_step: int) -> None:
 
 
 def _atomic_json_save(payload: dict, destination: Path) -> None:
-    temporary = destination.with_name(destination.name + ".tmp")
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent
+    )
+    temporary = Path(temporary_name)
     try:
-        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            output.write(json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False) + "\n")
+            output.flush()
+            os.fsync(output.fileno())
         os.replace(temporary, destination)
     finally:
         temporary.unlink(missing_ok=True)
 
 
 def _atomic_safetensors_save(state: dict, destination: Path) -> None:
-    temporary = destination.with_name(destination.name + ".tmp")
-    try:
+    # The private staging directory prevents a pre-created .tmp symlink from
+    # redirecting a large weights write outside the training output directory.
+    with tempfile.TemporaryDirectory(prefix=f".{destination.name}.", dir=destination.parent) as staging_dir:
+        temporary = Path(staging_dir) / destination.name
         # Clone tensors so tied embedding/output weights have independent storage in the file.
         save_file({name: tensor.detach().cpu().contiguous().clone() for name, tensor in state.items()}, str(temporary))
         os.replace(temporary, destination)
-    finally:
-        temporary.unlink(missing_ok=True)
 
 
 def train(config: Config, train_path: str, validation_path: str,
@@ -326,7 +338,11 @@ def train(config: Config, train_path: str, validation_path: str,
     config_output = out / "config.json"
     manifest_output = out / "artifact-manifest.json"
     _atomic_safetensors_save(model.state_dict(), model_path)
-    tokenizer_temporary = tokenizer_output.with_name(tokenizer_output.name + ".tmp")
+    tokenizer_fd, tokenizer_temp_name = tempfile.mkstemp(
+        prefix=f".{tokenizer_output.name}.", suffix=".tmp", dir=out
+    )
+    tokenizer_temporary = Path(tokenizer_temp_name)
+    os.close(tokenizer_fd)
     try:
         shutil.copyfile(tokenizer_file, tokenizer_temporary)
         os.replace(tokenizer_temporary, tokenizer_output)
