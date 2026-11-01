@@ -1,7 +1,9 @@
 import hashlib
 import json
 import os
+import shutil
 import sqlite3
+import tempfile
 import unicodedata
 from pathlib import Path
 
@@ -28,34 +30,39 @@ def prepare_corpus(
     license_name: str = "",
 ) -> dict:
     """Deduplicate and deterministically split JSONL documents using disk-backed SQLite."""
-    source_path = Path(input_path)
-    destination = Path(output_dir)
+    source_path = Path(input_path).expanduser().resolve()
+    requested_destination = Path(output_dir).expanduser()
+    if requested_destination.is_symlink():
+        raise ValueError("Corpus output directory cannot be a symbolic link.")
+    destination = requested_destination.resolve()
     if not source_path.is_file():
         raise FileNotFoundError(source_path)
     if not text_field:
         raise ValueError("text_field must not be empty.")
     if not 0 < validation_fraction < 0.5:
         raise ValueError("validation_fraction must be greater than 0 and less than 0.5.")
-    if seed < 0:
-        raise ValueError("seed must be non-negative.")
+    if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
+        raise ValueError("seed must be a non-negative integer.")
     if not source.strip() or not license_name.strip():
         raise ValueError("Dataset source and license must be documented.")
     destination.mkdir(parents=True, exist_ok=True)
     train_path = destination / "train.jsonl"
     validation_path = destination / "validation.jsonl"
     manifest_path = destination / "dataset-manifest.json"
-    database_path = destination / ".dedup-index.sqlite3"
-    temporary_paths = [
-        destination / ".train.jsonl.tmp",
-        destination / ".validation.jsonl.tmp",
-        destination / ".dataset-manifest.json.tmp",
-    ]
-    if any(path.exists() for path in (train_path, validation_path, manifest_path)):
+    if any(path.exists() or path.is_symlink() for path in (train_path, validation_path, manifest_path)):
         raise FileExistsError(f"Prepared dataset outputs already exist in {destination}")
+    temporary_root = Path(tempfile.mkdtemp(prefix=".arachne-corpus-", dir=destination))
+    database_path = temporary_root / "dedup-index.sqlite3"
+    temporary_paths = [
+        temporary_root / "train.jsonl",
+        temporary_root / "validation.jsonl",
+        temporary_root / "dataset-manifest.json",
+    ]
     input_digest = hashlib.sha256()
     train_count = validation_count = duplicate_count = skipped_count = 0
-    database_path.unlink(missing_ok=True)
     connection = sqlite3.connect(database_path)
+    published_paths: list[Path] = []
+    success = False
     try:
         connection.execute("PRAGMA journal_mode=OFF")
         connection.execute("PRAGMA synchronous=OFF")
@@ -120,15 +127,19 @@ def prepare_corpus(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
-        os.replace(temporary_paths[0], train_path)
-        os.replace(temporary_paths[1], validation_path)
-        os.replace(temporary_paths[2], manifest_path)
+        for staged, final in zip(temporary_paths, (train_path, validation_path, manifest_path)):
+            if final.exists() or final.is_symlink():
+                raise FileExistsError(f"Prepared dataset output appeared during processing: {final}")
+            os.replace(staged, final)
+            published_paths.append(final)
+        success = True
         return manifest
     finally:
         connection.close()
-        database_path.unlink(missing_ok=True)
-        for path in temporary_paths:
-            path.unlink(missing_ok=True)
+        if not success:
+            for path in published_paths:
+                path.unlink(missing_ok=True)
+        shutil.rmtree(temporary_root, ignore_errors=True)
 
 
 def export_text(input_path: str, output_path: str, text_field: str = "text") -> int:
