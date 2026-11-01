@@ -253,8 +253,12 @@ def evaluate_artifact(artifact: str | Path, validation_tokens: str | Path,
     if precision not in {"fp32", "bf16", "fp16"}:
         raise ValueError("precision must be fp32, bf16 or fp16.")
     summary = verify_artifact(artifact)
-    model, _ = load_model(artifact, "cuda" if torch.cuda.is_available() else "cpu")
-    device = next(model.parameters()).device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if precision == "fp16" and device.type != "cuda":
+        raise RuntimeError("fp16 evaluation requires CUDA.")
+    if precision == "bf16" and device.type == "cuda" and not torch.cuda.is_bf16_supported():
+        raise RuntimeError("bf16 evaluation requested but this CUDA device does not support it.")
+    model, tokenizer = load_model(artifact, device)
     dataset = TokenBlockDataset(str(validation_tokens), model.config.max_seq_len)
     if not len(dataset):
         raise ValueError("Validation token dataset has no complete blocks.")
@@ -262,10 +266,32 @@ def evaluate_artifact(artifact: str | Path, validation_tokens: str | Path,
     if not sidecar.is_file():
         raise FileNotFoundError(f"Missing token provenance sidecar: {sidecar}")
     metadata = json.loads(sidecar.read_text(encoding="utf-8"))
+    if not isinstance(metadata, dict):
+        raise ValueError("Validation token provenance sidecar must contain a JSON object.")
+    if metadata.get("format_version") != 1 or metadata.get("token_format") != "little-endian-uint32":
+        raise ValueError("Unsupported validation token dataset format.")
+    if metadata.get("token_file") != Path(validation_tokens).name:
+        raise ValueError("Validation token filename does not match its provenance sidecar.")
+    if metadata.get("token_count") != dataset.tokens.numel():
+        raise ValueError("Validation token count does not match its provenance sidecar.")
+    if metadata.get("tokenizer_vocab_size") != model.config.vocab_size:
+        raise ValueError("Validation token vocabulary does not match the evaluated artifact.")
     if metadata.get("tokenizer_sha256") != summary["tokenizer_sha256"]:
         raise ValueError("Validation data tokenizer does not match the evaluated artifact.")
     if metadata.get("token_file_sha256") != sha256_file(validation_tokens):
         raise ValueError("Validation token checksum does not match its sidecar.")
+    actual_special_tokens = {
+        "pad_id": tokenizer.pad_id(),
+        "unk_id": tokenizer.unk_id(),
+        "bos_id": tokenizer.bos_id(),
+        "eos_id": tokenizer.eos_id(),
+    }
+    if metadata.get("special_tokens") != actual_special_tokens or metadata.get("eos_id") != tokenizer.eos_id():
+        raise ValueError("Validation token special-token metadata does not match the evaluated tokenizer.")
+    minimum_token = int(dataset.tokens.min().item())
+    maximum_token = int(dataset.tokens.max().item())
+    if minimum_token < 0 or maximum_token >= model.config.vocab_size:
+        raise ValueError("Validation token stream contains IDs outside the model vocabulary.")
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
     loss = evaluate(model, loader, device, precision=precision, max_batches=max_batches)
     return {
