@@ -57,7 +57,13 @@ def main() -> None:
     feedback.add_argument("--correction", required=True)
     feedback.add_argument("--rating", type=int, choices=range(1, 6), required=True)
     feedback.add_argument("--language", choices=("tr", "en"), required=True)
-    feedback_export = commands.add_parser("feedback-export", help="Export consented, high-rated corrections for review")
+    feedback_review = commands.add_parser("feedback-review", help="Approve or reject one feedback record for training eligibility")
+    feedback_review.add_argument("--database", default="data/feedback.sqlite3")
+    feedback_review.add_argument("--id", type=int, required=True)
+    review_action = feedback_review.add_mutually_exclusive_group(required=True)
+    review_action.add_argument("--approve", action="store_true")
+    review_action.add_argument("--reject", action="store_true")
+    feedback_export = commands.add_parser("feedback-export", help="Export reviewed and approved corrections for training")
     feedback_export.add_argument("--database", default="data/feedback.sqlite3")
     feedback_export.add_argument("--output", required=True)
     feedback_export.add_argument("--min-rating", type=int, choices=range(1, 6), default=4)
@@ -123,6 +129,9 @@ def main() -> None:
             consent=args.consent, prompt=args.prompt, response=args.response,
             correction=args.correction, rating=args.rating, language=args.language)
         print(json.dumps({"feedback_id": record_id, "stored": True}))
+    elif args.command == "feedback-review":
+        FeedbackStore(args.database).review(args.id, approved=args.approve)
+        print(json.dumps({"feedback_id": args.id, "reviewed": True, "approved": args.approve}))
     elif args.command == "feedback-export":
         manifest = FeedbackStore(args.database).export_approved(args.output, min_rating=args.min_rating)
         print(json.dumps(manifest, ensure_ascii=False, indent=2))
