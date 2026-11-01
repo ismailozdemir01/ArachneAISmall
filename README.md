@@ -1,117 +1,189 @@
 # ArachneAISmall
 
-ArachneAISmall is the from-scratch model research and training repository for the ArachneAI ecosystem. It is intentionally separate from the commercial SaaS repository and from the open-source inference runtime.
+**ArachneAISmall is a from-scratch, Turkish–English language-model research and training project in the ArachneAI ecosystem.**
 
-Türkçe dokümantasyon: [README_TR.md](README_TR.md).
+The repository contains the implementation for preparing licensed training data, building a tokenizer, training a decoder-only Transformer, evaluating model artifacts, and serving a verified model through a local API and web interface.
 
-## Model design
+- **Primary languages:** Turkish and English
+- **Target model size:** 1.5B-class
+- **Configured parameter count:** 1,523,714,048
+- **Training approach:** random initialization; no third-party pretrained weights
+- **Project status:** training and release pipeline implemented; trained model weights are not yet published
 
-The initial target configuration is a 1.5B-class decoder-only Transformer. The checked-in dimensions resolve to approximately 1.524B trainable parameters, calculated from the implemented layers and embeddings with RMSNorm, rotary position embeddings (RoPE), grouped-query causal attention, and SwiGLU feed-forward layers. The dimensions are explicit and configurable; run the parameter counter rather than assuming a label equals an exact parameter count.
+[🇹🇷 Türkçe README](README_TR.md)
 
-The implementation starts from random initialization. It does not download, wrap, or fine-tune third-party pretrained weights.
+---
 
-## Install
+## Project goals
 
-Use Python 3.10+ and install a PyTorch build appropriate for the target CPU/CUDA environment:
+ArachneAISmall is being developed to provide a transparent, reproducible path from authorized text corpora to a versioned language-model artifact. The goal is to build and train the model itself rather than adapt an existing pretrained model.
+
+The 1.5B configuration is an architecture target, **not evidence that a model of this size has already been trained**. Turkish and English are the intended languages; language quality and capability claims require training and published evaluations.
+
+## Architecture
+
+The configured decoder-only Transformer uses:
+
+- RMSNorm
+- Rotary Position Embeddings (RoPE)
+- Grouped-Query Causal Attention (GQA)
+- SwiGLU feed-forward layers
+- Residual connections
+- Optional gradient checkpointing
+- Configurable model dimensions and training settings
+
+Inspect the configured parameter count directly:
+
+```bash
+arachne-small count-parameters --config configs/1_5b.yaml
+```
+
+## What is implemented
+
+| Area | Implementation |
+|---|---|
+| Corpus preparation | Unicode normalization, deterministic document-level splitting, disk-backed deduplication and provenance manifest |
+| Tokenizer | SentencePiece BPE training from the training split |
+| Token datasets | Binary token streams with checksum and tokenizer metadata sidecars |
+| Training | PyTorch training loop, AdamW, gradient accumulation, clipping, warmup/cosine schedule and evaluation |
+| Checkpointing | Atomic checkpoint writes and validated resume |
+| Model artifacts | SafeTensors weights, tokenizer, model configuration and SHA-256 manifest |
+| Artifact verification | File integrity, tokenizer identity, tensor names/shapes and architecture checks |
+| Inference | FastAPI endpoints and a Turkish/English browser interface |
+| Feedback | Local SQLite storage with explicit user consent |
+| Continual learning | Candidate fine-tuning from a verified base artifact, baseline comparison, gated promotion and rollback |
+
+Implementation and operational details are documented in the `docs/` directory.
+
+## Quick start
+
+### Requirements
+
+- Python 3.10 or newer
+- A PyTorch installation appropriate for the target CPU or CUDA environment
+- Authorized training text in UTF-8 JSONL format
+
+Install the project:
 
 ```bash
 python -m venv .venv
-# Activate the environment, then:
+# Activate the virtual environment
 python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
-## Data contract and provenance
+### Prepare a corpus
 
-Training input is JSONL with one document per line, for example:
+Each JSONL line must contain a `text` field:
 
 ```json
-{"text":"Açık ve lisanslı eğitim metni."}
+{"text":"A licensed Turkish or English training document."}
 ```
 
-Only use corpora for which you have documented rights to train. Keep raw data out of Git. Record source, license, collection date, filtering, deduplication, and consent/provenance in your own dataset manifest. Do not include personal or confidential data without a lawful basis and appropriate authorization.
-
-Prepare the source corpus before tokenization. This step normalizes Unicode and whitespace, removes exact normalized duplicates with a disk-backed index, performs a deterministic document-level train/validation split, and writes a provenance manifest. Source and license are mandatory metadata:
+Prepare the corpus and record its origin and license:
 
 ```bash
-arachne-small prepare-corpus --input data/source.jsonl --output-dir data/split --validation-fraction 0.01 --seed 1337 --source "Dataset origin and version" --license "Exact license or written grant"
+arachne-small prepare-corpus \
+  --input data/source.jsonl \
+  --output-dir data/split \
+  --validation-fraction 0.01 \
+  --seed 1337 \
+  --source "Dataset origin and version" \
+  --license "Exact license or written permission"
 ```
 
-Train a SentencePiece BPE tokenizer from the authorized training documents only, so validation text does not leak into tokenizer training:
+Train the tokenizer only on the training split, then encode both splits:
 
 ```bash
 arachne-small export-text --input data/split/train.jsonl --output data/train-corpus.txt
 arachne-small tokenizer --input data/train-corpus.txt --output-prefix artifacts/tokenizer/arachne --vocab-size 32000
-```
 
-Encode the two document splits independently. Each binary token stream is written atomically with a `.bin.json` sidecar containing its SHA-256 checksum, tokenizer SHA-256, vocabulary size, EOS ID, source checksum, and token count. Training refuses mismatched tokenizers or altered token files:
-```bash
 arachne-small prepare-data --input data/split/train.jsonl --output data/processed/train.bin --tokenizer artifacts/tokenizer/arachne.model --eos-id 3
 arachne-small prepare-data --input data/split/validation.jsonl --output data/processed/validation.bin --tokenizer artifacts/tokenizer/arachne.model --eos-id 3
 ```
 
-## Training
+The data pipeline writes integrity metadata alongside token files. Training checks the token files and tokenizer identity before optimization begins.
 
-The tokenizer file is required at training time. The CLI verifies its SHA-256 against both token dataset sidecars before optimization starts.
+### Train
 
 ```bash
-arachne-small count-parameters --config configs/1_5b.yaml
-arachne-small train --config configs/1_5b.yaml --train-data data/processed/train.bin --validation-data data/processed/validation.bin --tokenizer artifacts/tokenizer/arachne.model
+arachne-small train \
+  --config configs/1_5b.yaml \
+  --train-data data/processed/train.bin \
+  --validation-data data/processed/validation.bin \
+  --tokenizer artifacts/tokenizer/arachne.model
 ```
 
-For a genuine end-to-end code smoke run on a small machine, use `configs/dev.yaml` with a tokenizer/data set whose vocabulary and sequence length match that configuration. The 1.5B target requires substantial accelerator memory, storage, and training time; the configuration is not a claim that weights have already been trained.
+The 1.5B target requires substantial accelerator memory, storage, and training time. Use `configs/dev.yaml` for a small local software smoke test with matching tokenizer and data dimensions; that test does not train or validate the 1.5B model.
 
-Resume from a checkpoint with `--resume path/to/checkpoints/step-XXXXXXXX.pt`. The completed run exports `model.safetensors`, the exact `tokenizer.model`, `config.json`, and `artifact-manifest.json`; the package contract is defined in [docs/ARTIFACT_FORMAT.md](docs/ARTIFACT_FORMAT.md). Checkpoints contain model and optimizer state. Resume files are trusted local training artifacts; do not load files from untrusted sources. Resume restores model and optimizer state, but does not guarantee bit-for-bit replay of the data-loader shuffle position.
+Only use datasets for which model-training rights are documented. Do not commit raw corpora, personal data, or confidential material to this repository.
 
-## Local inference API and user interface
+## Local inference
 
-After training and verifying an artifact, start the local inference server:
+After training, set the path to a verified model artifact and start the service.
 
-```bash
-# Linux/macOS
-export ARACHNE_SMALL_ARTIFACT="artifacts/arachne-small-1.5b"
-arachne-small serve
+**Windows PowerShell**
 
-# Windows PowerShell
+```powershell
 $env:ARACHNE_SMALL_ARTIFACT = "artifacts/arachne-small-1.5b"
 arachne-small serve
 ```
 
-Open `http://127.0.0.1:8000`. The browser UI calls the real inference API; it does not contain a simulated model response. If no verified artifact is configured, the interface reports that the model is unavailable and generation returns HTTP 503. The server binds to loopback by default. Remote binding is blocked unless explicitly enabled with `ARACHNE_SMALL_ALLOW_REMOTE=1`; remote deployments must be placed behind an authenticated TLS reverse proxy and network access controls.
+**Linux / macOS**
 
-API endpoints:
-- `GET /api/health`: process health.
-- `GET /api/status`: loaded artifact, device and model dimensions.
-- `POST /api/generate`: text generation with bounded prompt and generation parameters.
-- `POST /api/feedback`: local correction intake with explicit consent.
-- `GET /docs`: interactive OpenAPI documentation.
+```bash
+export ARACHNE_SMALL_ARTIFACT="artifacts/arachne-small-1.5b"
+arachne-small serve
+```
 
-The model is loaded once at startup and inference requests are serialized per process to prevent concurrent generation from exhausting accelerator memory. See [docs/INFERENCE_API.md](docs/INFERENCE_API.md) for the API contract and deployment notes.
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 
-## Model card and data governance
+The web interface calls the actual inference API. It does not provide placeholder or simulated model answers. If a verified model artifact is unavailable, generation is disabled and the API returns HTTP 503.
 
-See [docs/MODEL_CARD.md](docs/MODEL_CARD.md) for the model's release status and evaluation requirements, and [docs/DATASET_POLICY.md](docs/DATASET_POLICY.md) for dataset intake and provenance rules.
+The server binds to loopback by default. Remote binding requires explicit opt-in; any remote deployment must use an authenticated TLS reverse proxy and network access controls.
+
+### API endpoints
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/health` | Service health |
+| `GET /api/status` | Loaded artifact and runtime status |
+| `POST /api/generate` | Text generation |
+| `POST /api/feedback` | Explicit-consent feedback submission |
+| `GET /docs` | Interactive OpenAPI documentation |
+
+See [Inference API](docs/INFERENCE_API.md).
 
 ## Controlled continual learning
 
-The repository includes an explicit-consent, local SQLite feedback store and an end-to-end continual-learning command. Eligible corrections are encoded with the verified base artifact's tokenizer; candidate training initializes from that artifact rather than random weights. A candidate is evaluated against the baseline on the same fixed validation stream and is rejected on validation-loss regression by default. Passing candidates are stored as immutable content-addressed releases behind an atomic current-version pointer, with verified rollback support. There is no hidden telemetry or automatic collection of raw prompts. See [Controlled Continual Learning](docs/CONTINUAL_LEARNING.md).
+The feedback workflow is opt-in and local. Eligible corrections can be used to train a candidate initialized from a verified base artifact. The candidate is evaluated against the baseline on the same validation token stream. Promotion is blocked when the configured validation-loss gate fails; promoted releases are content-addressed and support verified rollback.
 
-This pipeline requires a trained base artifact and a matching validation token stream. No trained weights are included in the repository; the pipeline is source-complete but has not been executed on the user's training hardware.
+This workflow requires an already trained base artifact and a matching validation dataset. It does not mean continual learning has already been run on a released model.
 
-## Code license
+See [Controlled Continual Learning](docs/CONTINUAL_LEARNING.md).
 
-No code license has been selected in this repository. Making the repository public does not by itself grant permission to reuse, modify, or redistribute its code. Add the owner's chosen license before describing the project as open source.
+## Documentation
 
-## Repository boundary
+- [Model Card](docs/MODEL_CARD.md)
+- [Dataset Policy](docs/DATASET_POLICY.md)
+- [Artifact Format](docs/ARTIFACT_FORMAT.md)
+- [Inference API](docs/INFERENCE_API.md)
+- [Controlled Continual Learning](docs/CONTINUAL_LEARNING.md)
 
-This repository owns tokenizer training, data encoding, model architecture, optimization, checkpointing, evaluation, and model artifact production. ArachneAIOpen owns inference and must consume the versioned artifact format documented there. ArachneAI remains the commercial SaaS product.
+## Validation and release status
 
-## Current implementation status
+The current automated test suite was run locally on Python 3.14.7 with CPU-only PyTorch: **33 tests passed**. Python bytecode compilation and the command-line help check also completed successfully in that environment.
 
-The repository contains the complete source pipeline for producing a trained artifact, but no trained weights or training corpus are committed. A completed run exports a versioned SafeTensors package with the exact tokenizer, architecture config, and SHA-256 manifest. Verify a completed package with:
+These checks validate software behavior covered by the test suite. They are **not** a trained-model evaluation, benchmark, throughput measurement, or evidence of Turkish/English language quality. No trained weights or training corpus are currently published in this repository.
 
-```bash
-arachne-small verify-artifact --path artifacts/arachne-small-1.5b
-```
+A trained release requires an actual training run, recorded evaluation metrics, artifact verification, and hardware performance measurements.
 
-Training, numerical validation, artifact verification, and hardware throughput measurements must be run on the target machine before claiming a trained release.
+## Repository boundaries
+
+- **ArachneAISmall:** model architecture, data preparation, tokenizer, training, evaluation and artifact creation.
+- **ArachneAIOpen:** separate inference/runtime project consuming the documented artifact contract.
+- **ArachneAI:** separate commercial SaaS product.
+
+## License
+
+No code license has been selected for this repository yet. Public visibility alone does not grant permission to reuse, modify, or redistribute the code. A license must be added before the project can accurately be described as open source.
