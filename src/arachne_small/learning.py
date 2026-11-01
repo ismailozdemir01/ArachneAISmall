@@ -333,7 +333,10 @@ def promote_candidate(candidate: str | Path, baseline: str | Path,
         )
     candidate_path = Path(candidate).expanduser().resolve()
     baseline_path = Path(baseline).expanduser().resolve()
-    release = Path(release_dir).expanduser().resolve()
+    requested_release = Path(release_dir).expanduser()
+    if requested_release.is_symlink():
+        raise ValueError("Release directory cannot be a symbolic link.")
+    release = requested_release.resolve()
     release.mkdir(parents=True, exist_ok=True)
     import shutil
     version = candidate_metrics["weights_sha256"]
@@ -343,12 +346,16 @@ def promote_candidate(candidate: str | Path, baseline: str | Path,
 
     def install_immutable(source: Path, digest: str) -> None:
         destination = release / digest
+        if destination.is_symlink():
+            raise ValueError("Content-addressed release directories cannot be symbolic links.")
         if destination.exists():
             verify_artifact(destination)
             if verify_artifact(destination)["weights_sha256"] != digest:
                 raise ValueError("Content-addressed release directory contains the wrong artifact.")
             return
         staging = release / (digest + ".staging")
+        if staging.is_symlink():
+            raise ValueError("Release staging path cannot be a symbolic link.")
         if staging.exists():
             shutil.rmtree(staging)
         shutil.copytree(source, staging)
@@ -376,11 +383,15 @@ def promote_candidate(candidate: str | Path, baseline: str | Path,
 
 def _read_release_version(release: Path) -> str | None:
     pointer = release / "current.json"
+    if pointer.is_symlink():
+        raise ValueError("Release pointer cannot be a symbolic link.")
     if not pointer.is_file():
         return None
     data = json.loads(pointer.read_text(encoding="utf-8"))
     version = data.get("version")
-    if not isinstance(version, str) or not re.fullmatch(r"[0-9a-f]{64}", version) or not (release / version).is_dir():
+    version_path = release / version if isinstance(version, str) else release
+    if (not isinstance(version, str) or not re.fullmatch(r"[0-9a-f]{64}", version)
+            or version_path.is_symlink() or not version_path.is_dir()):
         raise ValueError("Existing release pointer is invalid; refusing to overwrite it.")
     verify_artifact(release / version)
     return version
@@ -398,7 +409,10 @@ def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 def rollback_release(release_dir: str | Path, version: str | None = None) -> dict[str, Any]:
-    release = Path(release_dir).expanduser().resolve()
+    requested_release = Path(release_dir).expanduser()
+    if requested_release.is_symlink():
+        raise ValueError("Release directory cannot be a symbolic link.")
+    release = requested_release.resolve()
     current = _read_release_version(release)
     if current is None:
         raise FileNotFoundError("No current release exists.")
@@ -408,6 +422,8 @@ def rollback_release(release_dir: str | Path, version: str | None = None) -> dic
     if not isinstance(target, str) or not re.fullmatch(r"[0-9a-f]{64}", target) or target == current:
         raise ValueError("A distinct, valid content-hash release version is required for rollback.")
     target_path = release / target
+    if target_path.is_symlink():
+        raise ValueError("Rollback target cannot be a symbolic link.")
     if not target_path.is_dir():
         raise FileNotFoundError(f"Release version does not exist: {target}")
     verify_artifact(target_path)
@@ -436,8 +452,14 @@ def run_learning_cycle(*, database: str | Path, base_artifact: str | Path,
     artifact_config = json.loads((base / "config.json").read_text(encoding="utf-8"))
     tokenizer_path = base / artifact_config["tokenizer"]["file"]
     tokenizer = __import__("sentencepiece").SentencePieceProcessor(model_file=str(tokenizer_path))
-    work = Path(work_dir).expanduser().resolve()
-    release = Path(release_dir).expanduser().resolve()
+    requested_work = Path(work_dir).expanduser()
+    requested_release = Path(release_dir).expanduser()
+    if requested_work.is_symlink():
+        raise ValueError("Learning work directory cannot be a symbolic link.")
+    if requested_release.is_symlink():
+        raise ValueError("Release directory cannot be a symbolic link.")
+    work = requested_work.resolve()
+    release = requested_release.resolve()
     validation = Path(validation_tokens).expanduser().resolve()
 
     def overlaps(left: Path, right: Path) -> bool:
