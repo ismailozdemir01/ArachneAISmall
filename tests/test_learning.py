@@ -219,3 +219,21 @@ def test_feedback_database_rejects_symlink_path(tmp_path):
     with pytest.raises(ValueError, match="symbolic link"):
         FeedbackStore(link)
     assert target.read_bytes() == b"not a database"
+
+
+
+def test_release_content_hash_covers_config_manifest_tokenizer_and_weights():
+    from arachne_small.learning import _release_content_hash
+
+    identity = {
+        "model_config_sha256": "a" * 64,
+        "artifact_manifest_sha256": "b" * 64,
+        "tokenizer_sha256": "c" * 64,
+        "weights_sha256": "d" * 64,
+    }
+    original = _release_content_hash(identity)
+    assert original == _release_content_hash(dict(identity))
+    for field in identity:
+        changed = dict(identity)
+        changed[field] = "e" * 64
+        assert _release_content_hash(changed) != original
