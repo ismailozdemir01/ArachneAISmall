@@ -1,25 +1,69 @@
-# ArachneAI Small
+# ArachneAISmall
 
-ArachneAI Small, ArachneAI ekosisteminin sıfırdan model geliştirme ve eğitim deposudur. Ticari SaaS ürünü olan ArachneAI'den ve açık kaynak çıkarım motoru ArachneAIOpen'dan ayrı tutulur.
+**ArachneAISmall, ArachneAI ekosistemi içinde Türkçe ve İngilizce odaklı, sıfırdan dil modeli geliştirme ve eğitim projesidir.**
+
+Depo; lisanslı eğitim verisinin hazırlanması, tokenizer oluşturulması, decoder-only Transformer modelinin eğitilmesi, model paketlerinin değerlendirilmesi ve doğrulanmış modelin yerel API ile web arayüzünden sunulması için gerekli yazılımı içerir.
+
+- **Hedef diller:** Türkçe ve İngilizce
+- **Hedef model boyutu:** 1.5B sınıfı
+- **Yapılandırılmış parametre sayısı:** 1.523.714.048
+- **Eğitim yaklaşımı:** Rastgele başlangıç ağırlıkları; üçüncü taraf önceden eğitilmiş ağırlık kullanılmaz
+- **Proje durumu:** Eğitim ve yayınlama hattının yazılımı geliştirildi; eğitilmiş model ağırlıkları henüz yayımlanmadı
+
+[🇬🇧 English README](README.md)
+
+---
+
+## Projenin amacı
+
+ArachneAISmall, kullanım hakkı belgelenmiş metin koleksiyonlarından sürümlenebilir dil modeli paketine kadar izlenebilir ve tekrarlanabilir bir geliştirme süreci oluşturmayı amaçlar. Mevcut bir önceden eğitilmiş modeli uyarlamak yerine modelin kendisi sıfırdan geliştirilir ve eğitilir.
+
+1.5B yapılandırması bir mimari hedeftir; **bu boyutta bir modelin hâlihazırda eğitildiği anlamına gelmez**. Türkçe ve İngilizce hedef dillerdir. Dil kalitesi ve yetenek iddiaları ancak gerçek eğitim ve yayımlanmış değerlendirmelerle desteklenebilir.
 
 ## Model mimarisi
 
-Hedef model, yaklaşık **1.524 milyar parametreli** decoder-only Transformer mimarisidir. Depodaki yapılandırmanın gerçek parametre sayısı **1.523.714.048**'dir.
-
-Mimari bileşenleri:
+Yapılandırılmış decoder-only Transformer mimarisi şu bileşenleri kullanır:
 
 - RMSNorm
 - Rotary Position Embeddings (RoPE)
 - Grouped-Query Causal Attention (GQA)
-- SwiGLU feed-forward katmanı
+- SwiGLU feed-forward katmanları
 - Residual bağlantılar
 - İsteğe bağlı gradient checkpointing
+- Yapılandırılabilir model boyutları ve eğitim ayarları
 
-Model rastgele başlangıç ağırlıklarıyla sıfırdan eğitilir. Üçüncü taraf önceden eğitilmiş ağırlıklar indirilmez, temel model olarak kullanılmaz veya fine-tuning yapılmaz.
+Parametre sayısını yapılandırmadan doğrudan hesaplayın:
 
-## Kurulum
+```bash
+arachne-small count-parameters --config configs/1_5b.yaml
+```
 
-Python 3.10+ gerekir. PyTorch kurulumunu hedef CPU/CUDA ortamına uygun seçin.
+## Geliştirilen bileşenler
+
+| Alan | Uygulama |
+|---|---|
+| Veri hazırlama | Unicode normalizasyonu, deterministik belge ayrımı, disk tabanlı mükerrer kayıt temizliği ve kaynak manifesti |
+| Tokenizer | Eğitim bölümü üzerinden SentencePiece BPE eğitimi |
+| Token veri kümeleri | Checksum ve tokenizer metaverisi içeren ikili token dosyaları |
+| Eğitim motoru | PyTorch, AdamW, gradient accumulation, gradient clipping, warmup/cosine schedule ve değerlendirme |
+| Checkpoint | Atomik kayıt ve doğrulamalı kaldığı yerden devam |
+| Model paketleri | SafeTensors ağırlıkları, tokenizer, model yapılandırması ve SHA-256 manifesti |
+| Paket doğrulama | Dosya bütünlüğü, tokenizer kimliği, tensor adları/şekilleri ve mimari kontrolleri |
+| Çıkarım | FastAPI uç noktaları ve Türkçe/İngilizce tarayıcı arayüzü |
+| Geri bildirim | Açık kullanıcı rızasıyla yerel SQLite kaydı |
+| Sürekli öğrenme | Doğrulanmış temel modelden aday eğitim, baseline karşılaştırması, kontrollü yayınlama ve geri alma |
+
+Uygulama ve işletim ayrıntıları `docs/` dizinindedir.
+
+## Hızlı başlangıç
+
+### Gereksinimler
+
+- Python 3.10 veya üzeri
+- Hedef CPU veya CUDA ortamına uygun PyTorch kurulumu
+- UTF-8 JSONL biçiminde, kullanım hakkı belgelenmiş eğitim metinleri
+
+Projeyi kurun:
 
 ```bash
 python -m venv .venv
@@ -28,108 +72,118 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
-## Veri hazırlama
+### Veri kümesini hazırlama
 
-Eğitim verisi, her satırında `text` alanı bulunan UTF-8 JSONL dosyasıdır:
+JSONL dosyasındaki her satır bir `text` alanı içermelidir:
 
 ```json
-{"text":"Türkçe veya İngilizce lisanslı eğitim metni."}
+{"text":"Lisanslı Türkçe veya İngilizce eğitim metni."}
 ```
 
-Yalnızca model eğitimi için kullanım hakkı belgelenmiş verileri kullanın. Bir içeriğin internette erişilebilir olması, o içeriğin model eğitiminde kullanılabileceği anlamına gelmez. Ham veri kümelerini Git deposuna eklemeyin.
-
-Önce mükerrer kayıtları ayıklayın, metni normalize edin ve belge seviyesinde deterministik eğitim/doğrulama ayrımı yapın:
+Veri kaynağını ve lisansını kaydederek korpusu hazırlayın:
 
 ```bash
-arachne-small prepare-corpus --input data/source.jsonl --output-dir data/split --validation-fraction 0.01 --seed 1337 --source "Veri kaynağı ve sürümü" --license "Lisans veya yazılı izin"
+arachne-small prepare-corpus \
+  --input data/source.jsonl \
+  --output-dir data/split \
+  --validation-fraction 0.01 \
+  --seed 1337 \
+  --source "Veri kaynağı ve sürümü" \
+  --license "Lisans veya yazılı izin"
 ```
 
-Tokenizer yalnızca eğitim bölümüyle oluşturulur:
+Tokenizer'ı yalnızca eğitim bölümüyle eğitin, ardından iki bölümü de kodlayın:
 
 ```bash
 arachne-small export-text --input data/split/train.jsonl --output data/train-corpus.txt
 arachne-small tokenizer --input data/train-corpus.txt --output-prefix artifacts/tokenizer/arachne --vocab-size 32000
-```
 
-İki veri bölümünü aynı tokenizer ile ayrı ayrı kodlayın:
-
-```bash
 arachne-small prepare-data --input data/split/train.jsonl --output data/processed/train.bin --tokenizer artifacts/tokenizer/arachne.model --eos-id 3
 arachne-small prepare-data --input data/split/validation.jsonl --output data/processed/validation.bin --tokenizer artifacts/tokenizer/arachne.model --eos-id 3
 ```
 
-Her token dosyası için SHA-256, tokenizer kimliği, özel token ID'leri ve token sayısını içeren JSON sidecar üretilir. Eğitim, dosya checksum'larını ve tokenizer eşleşmesini doğrulamadan başlamaz.
+Veri hattı token dosyalarının yanında bütünlük metaverisi üretir. Eğitim başlamadan önce token dosyalarının checksum değerleri ve tokenizer kimliği doğrulanır.
 
-## Eğitim
-
-```bash
-arachne-small count-parameters --config configs/1_5b.yaml
-arachne-small train --config configs/1_5b.yaml --train-data data/processed/train.bin --validation-data data/processed/validation.bin --tokenizer artifacts/tokenizer/arachne.model
-```
-
-Küçük ölçekli yerel kod doğrulaması için `configs/dev.yaml` kullanılabilir. Tokenizer sözlüğü ve veri uzunluğu yapılandırmayla eşleşmelidir. 1.5B yapılandırması ciddi GPU belleği, depolama ve eğitim süresi gerektirir. Yapılandırmanın bulunması, model ağırlıklarının eğitilmiş olduğu anlamına gelmez.
-
-Checkpoint'ten devam etmek için:
+### Model eğitimi
 
 ```bash
-arachne-small train --config configs/1_5b.yaml --train-data data/processed/train.bin --validation-data data/processed/validation.bin --tokenizer artifacts/tokenizer/arachne.model --resume artifacts/arachne-small-1.5b/checkpoints/step-XXXXXXXX.pt
+arachne-small train \
+  --config configs/1_5b.yaml \
+  --train-data data/processed/train.bin \
+  --validation-data data/processed/validation.bin \
+  --tokenizer artifacts/tokenizer/arachne.model
 ```
 
-## Model paketi ve doğrulama
+1.5B hedefi yüksek GPU belleği, depolama kapasitesi ve uzun eğitim süresi gerektirir. Küçük yerel yazılım doğrulaması için tokenizer ve veri boyutları eşleşen `configs/dev.yaml` kullanılabilir. Bu test, 1.5B modelini eğitmez veya doğrulamaz.
 
-Eğitim tamamlandığında çıktı dizininde aşağıdaki inference paketi oluşturulur:
+Yalnızca model eğitimi için kullanım hakkı belgelenmiş veri kümelerini kullanın. Ham korpusları, kişisel verileri veya gizli içerikleri bu Git deposuna eklemeyin.
 
-- `model.safetensors`: model ağırlıkları; pickle kullanılmaz.
-- `tokenizer.model`: eğitimde kullanılan tam SentencePiece tokenizer.
-- `config.json`: mimari ve tokenizer sözleşmesi.
-- `artifact-manifest.json`: dosya SHA-256 değerleri ve eğitim metaverisi.
-- `training.jsonl`: eğitim kaybı ve doğrulama ölçümleri.
-- `checkpoints/`: optimizer/scaler durumunu içeren yerel devam dosyaları.
+## Yerel çıkarım
 
-Paketi doğrulayın:
+Eğitim tamamlandıktan sonra doğrulanmış model paketinin yolunu tanımlayın ve servisi başlatın.
 
-```bash
-arachne-small verify-artifact --path artifacts/arachne-small-1.5b
-```
-
-ArachneAIOpen ile ortak artifact sözleşmesi [docs/ARTIFACT_FORMAT.md](docs/ARTIFACT_FORMAT.md) içinde tanımlanmıştır.
-
-## Kullanıcı arayüzü ve çıkarım API'si
-
-Eğitim tamamlandıktan ve artifact doğrulandıktan sonra yerel sunucuyu başlatın:
+**Windows PowerShell**
 
 ```powershell
 $env:ARACHNE_SMALL_ARTIFACT = "artifacts/arachne-small-1.5b"
 arachne-small serve
 ```
 
-Ardından tarayıcıdan `http://127.0.0.1:8000` adresini açın. Arayüz gerçek çıkarım API'sine bağlanır; sahte model yanıtı üretmez. Doğrulanmış artifact yüklenmemişse model durumu açıkça kullanılamaz olarak gösterilir ve üretim isteği HTTP 503 döndürür. Sunucu varsayılan olarak yalnızca yerel arayüzde dinler. Uzak erişim varsayılan olarak kapalıdır; uzaktan yayın için `ARACHNE_SMALL_ALLOW_REMOTE=1` ayarıyla birlikte kimlik doğrulamalı TLS reverse proxy ve ağ erişim denetimleri zorunlu kabul edilmelidir.
+**Linux / macOS**
 
-API:
-- `GET /api/health`: servis sağlık kontrolü.
-- `GET /api/status`: model, artifact, donanım ve mimari durumu.
-- `POST /api/generate`: sınırlandırılmış metin üretimi.
-- `POST /api/feedback`: yalnızca açık rıza ile yerel düzeltme kaydı.
-- `GET /docs`: etkileşimli OpenAPI belgesi.
+```bash
+export ARACHNE_SMALL_ARTIFACT="artifacts/arachne-small-1.5b"
+arachne-small serve
+```
 
-Model süreç başlangıcında bir kez yüklenir. GPU belleğinin eşzamanlı isteklerle kontrolsüz tüketilmesini önlemek için çıkarım istekleri süreç içinde sıraya alınır. Ayrıntılar: [Inference API](docs/INFERENCE_API.md).
+Tarayıcıdan [http://127.0.0.1:8000](http://127.0.0.1:8000) adresini açın.
 
-## Veri yönetişimi ve model kartı
+Web arayüzü gerçek çıkarım API'sine bağlanır; sahte veya simüle edilmiş model yanıtı üretmez. Doğrulanmış model paketi bulunmuyorsa metin üretimi kullanılamaz ve API HTTP 503 döndürür.
 
-- [Model Card](docs/MODEL_CARD.md)
-- [Dataset Policy](docs/DATASET_POLICY.md)
-- [Artifact Format](docs/ARTIFACT_FORMAT.md)
+Sunucu varsayılan olarak yalnızca loopback arayüzünde dinler. Uzak erişim açıkça etkinleştirilmelidir; uzaktan yayın için kimlik doğrulamalı TLS reverse proxy ve ağ erişim denetimleri kullanılmalıdır.
+
+### API uç noktaları
+
+| Uç nokta | İşlev |
+|---|---|
+| `GET /api/health` | Servis sağlık durumu |
+| `GET /api/status` | Yüklenen model paketi ve çalışma zamanı durumu |
+| `POST /api/generate` | Metin üretimi |
+| `POST /api/feedback` | Açık rızalı geri bildirim gönderimi |
+| `GET /docs` | Etkileşimli OpenAPI dokümantasyonu |
+
+Ayrıntılar: [Inference API](docs/INFERENCE_API.md).
 
 ## Kontrollü sürekli öğrenme
 
-Small, kullanıcı mesajlarını otomatik veya gizlice eğitim verisine dönüştürmez. Kullanıcı açık rıza vererek yanıtı, düzeltmesini ve puanını yerel SQLite deposuna kaydedebilir. Yalnızca uygun puanlı, rızalı düzeltmeler doğrulanmış temel artifact'tan devam eden eğitim döngüsüne alınır. Aday model aynı sabit doğrulama kümesinde mevcut sürümle karşılaştırılır; kayıp eşiğini geçemezse yayımlanmaz. Geçen aday içerik-hash tabanlı sürüm deposuna alınır ve atomik sürüm işaretçisiyle etkin sürüm adayı olur. Önceki doğrulanmış sürüme geri dönüş desteklenir.
+Geri bildirim süreci isteğe bağlıdır ve yerel ortamda çalışır. Uygun düzeltmeler, doğrulanmış temel modelden başlatılan bir aday modeli eğitmek için kullanılabilir. Aday, aynı doğrulama token akışı üzerinde temel modelle karşılaştırılır. Yapılandırılmış doğrulama kaybı eşiği geçilemezse yayınlama engellenir. Yayımlanan sürümler içerik hash'iyle adreslenir ve doğrulanmış geri alma mekanizmasını destekler.
 
-Başlangıç komutları ve veri yönetişimi: [Kontrollü Sürekli Öğrenme](docs/CONTINUAL_LEARNING.md). Bu hat, eğitilmiş temel model artifact'ı ve aynı tokenizer ile hazırlanmış doğrulama token dosyası gerektirir. Model şu anda eğitilmiş ağırlık içermez; öğrenme hattının çalıştırılması yerel eğitim donanımı ve veri hazırlığı gerektirir.
+Bu süreç, önceden eğitilmiş bir temel model paketi ve onunla eşleşen doğrulama verisi gerektirir. Bu özellik, sürekli öğrenmenin yayımlanmış bir model üzerinde hâlihazırda çalıştırıldığı anlamına gelmez.
 
-## Kod lisansı
+Ayrıntılar: [Kontrollü Sürekli Öğrenme](docs/CONTINUAL_LEARNING.md).
 
-Bu depoya henüz bir kod lisansı eklenmedi. Depoyu public yapmak, kodun yeniden kullanılmasına, değiştirilmesine veya dağıtılmasına otomatik izin vermez. Açık kaynak lisansı olarak tanımlamadan önce depo sahibinin lisans seçimi yapılmalıdır.
+## Dokümantasyon
 
-## Yayın durumu
+- [Model Kartı](docs/MODEL_CARD.md)
+- [Veri Kümesi Politikası](docs/DATASET_POLICY.md)
+- [Model Paketi Biçimi](docs/ARTIFACT_FORMAT.md)
+- [Inference API](docs/INFERENCE_API.md)
+- [Kontrollü Sürekli Öğrenme](docs/CONTINUAL_LEARNING.md)
 
-Bu depo model mimarisini, veri hazırlama hattını, tokenizer üretimini, eğitim motorunu, checkpoint yönetimini ve inference artifact paketlemesini içerir. Şu anda eğitilmiş ağırlık veya eğitim korpusu içermez. Eğitim, yerel testler, doğrulama metrikleri ve donanım performans ölçümleri tamamlanmadan eğitilmiş model sürümü veya kalite iddiası yayımlanmayacaktır.
+## Test ve yayın durumu
+
+Mevcut otomatik test paketi Python 3.14.7 ve CPU tabanlı PyTorch ile yerel ortamda çalıştırıldı: **33 test başarılı**. Aynı ortamda Python bytecode derleme kontrolü ve komut satırı yardım kontrolü de başarıyla tamamlandı.
+
+Bu kontroller yalnızca test paketinin kapsadığı yazılım davranışlarını doğrular. **Eğitilmiş model değerlendirmesi, benchmark, hız ölçümü veya Türkçe/İngilizce dil kalitesi kanıtı değildir.** Bu depoda şu anda eğitilmiş ağırlıklar veya eğitim korpusu yayımlanmamıştır.
+
+Eğitilmiş bir sürüm yayımlanmadan önce gerçek eğitim çalıştırması, ölçümlenmiş değerlendirme sonuçları, model paketi doğrulaması ve donanım performans ölçümleri gereklidir.
+
+## Depoların sorumlulukları
+
+- **ArachneAISmall:** Model mimarisi, veri hazırlama, tokenizer, eğitim, değerlendirme ve model paketi üretimi.
+- **ArachneAIOpen:** Belgelenmiş model paketi sözleşmesini kullanan ayrı çıkarım/çalışma zamanı projesi.
+- **ArachneAI:** Ayrı ticari SaaS ürünü.
+
+## Lisans
+
+Bu depoda henüz bir kod lisansı seçilmemiştir. Depoyu public yapmak, kodu yeniden kullanma, değiştirme veya dağıtma izni vermez. Projeyi açık kaynak olarak tanımlamadan önce bir lisans eklenmelidir.
