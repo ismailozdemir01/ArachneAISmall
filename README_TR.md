@@ -186,4 +186,8 @@ Eğitilmiş bir sürüm yayımlanmadan önce gerçek eğitim çalıştırması, 
 
 ## Lisans
 
-Bu depoda henüz bir kod lisansı seçilmemiştir. Depoyu public yapmak, kodu yeniden kullanma, değiştirme veya dağıtma izni vermez. Projeyi açık kaynak olarak tanımlamadan önce bir lisans eklenmelidir.
+Bu depodaki ArachneAISmall kaynak kodu **Apache License 2.0** ile lisanslanmıştır. Lisans koşullarına uyarak kodu kullanabilir, değiştirebilir ve dağıtabilirsiniz. Lisans açık bir patent izni içerir; yeniden dağıtımda lisansın ve ilgili bildirimlerin korunmasını gerektirir.
+
+Lisansın tam metni için [LICENSE](LICENSE) dosyasına bakın.
+
+Bu depodaki kod lisansı; harici veri kümelerini, üçüncü taraf varlıkları veya ileride yayımlanacak eğitilmiş model ağırlıklarını kendiliğinden kapsamaz. Bu materyaller için ayrıca geçerli lisans ve kullanım koşulları belirlenmelidir.
