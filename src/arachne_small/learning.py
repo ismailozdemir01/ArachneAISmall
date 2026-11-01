@@ -37,6 +37,7 @@ class FeedbackStore:
                     rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
                     language TEXT NOT NULL CHECK(language IN ('tr','en')),
                     reviewed INTEGER NOT NULL DEFAULT 0 CHECK(reviewed IN (0,1)),
+                    approved INTEGER NOT NULL DEFAULT 0 CHECK(approved IN (0,1)),
                     exported INTEGER NOT NULL DEFAULT 0 CHECK(exported IN (0,1)),
                     content_sha256 TEXT NOT NULL UNIQUE
                 )
@@ -44,7 +45,9 @@ class FeedbackStore:
             columns = {row["name"] for row in db.execute("PRAGMA table_info(feedback)")}
             if "exported" not in columns:
                 db.execute("ALTER TABLE feedback ADD COLUMN exported INTEGER NOT NULL DEFAULT 0 CHECK(exported IN (0,1))")
-            db.execute("CREATE INDEX IF NOT EXISTS feedback_reviewed_idx ON feedback(reviewed, exported, id)")
+            if "approved" not in columns:
+                db.execute("ALTER TABLE feedback ADD COLUMN approved INTEGER NOT NULL DEFAULT 0 CHECK(approved IN (0,1))")
+            db.execute("CREATE INDEX IF NOT EXISTS feedback_reviewed_idx ON feedback(reviewed, approved, exported, id)")
 
     @contextmanager
     def _connect(self):
@@ -108,12 +111,33 @@ class FeedbackStore:
             row = db.execute("SELECT id FROM feedback WHERE content_sha256=?", (digest,)).fetchone()
             return int(row["id"])
 
+    def review(self, record_id: int, *, approved: bool) -> None:
+        if isinstance(record_id, bool) or not isinstance(record_id, int) or record_id < 1:
+            raise ValueError("record_id must be a positive integer.")
+        if not isinstance(approved, bool):
+            raise TypeError("approved must be a boolean.")
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT exported FROM feedback WHERE id=? AND consent=1",
+                (record_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"Feedback record does not exist: {record_id}")
+            if row["exported"]:
+                raise ValueError("Exported feedback cannot be re-reviewed; create a new correction instead.")
+            db.execute(
+                "UPDATE feedback SET reviewed=1, approved=? WHERE id=? AND consent=1",
+                (1 if approved else 0, record_id),
+            )
+
     def mark_exported(self, record_hashes: list[str]) -> None:
         if not record_hashes:
             return
         with self._connect() as db:
-            db.executemany("UPDATE feedback SET exported=1 WHERE content_sha256=? AND consent=1",
-                           [(value,) for value in record_hashes])
+            db.executemany(
+                "UPDATE feedback SET exported=1 WHERE content_sha256=? AND consent=1 AND reviewed=1 AND approved=1",
+                [(value,) for value in record_hashes],
+            )
 
     def export_approved(self, destination: str | Path, *, min_rating: int = 4) -> dict[str, Any]:
         if isinstance(min_rating, bool) or not isinstance(min_rating, int) or not 1 <= min_rating <= 5:
@@ -126,7 +150,7 @@ class FeedbackStore:
         try:
             with self._connect() as db, temporary.open("w", encoding="utf-8") as output:
                 rows = db.execute(
-                    "SELECT id,prompt,correction,language,content_sha256 FROM feedback WHERE reviewed=0 AND exported=0 AND consent=1 AND rating>=? ORDER BY id",
+                    "SELECT id,prompt,correction,language,content_sha256 FROM feedback WHERE reviewed=1 AND approved=1 AND exported=0 AND consent=1 AND rating>=? ORDER BY id",
                     (min_rating,),
                 )
                 for row in rows:
