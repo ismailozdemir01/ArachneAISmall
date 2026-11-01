@@ -112,14 +112,21 @@ def test_feedback_must_be_explicitly_reviewed_and_approved_before_export(tmp_pat
 
     store.review(record_id, approved=False)
     assert store.export_approved(output)["records"] == 0
+    with pytest.raises(ValueError, match="decisions are immutable"):
+        store.review(record_id, approved=True)
 
-    store.review(record_id, approved=True)
-    assert store.export_approved(output)["records"] == 1
+    approved_id = store.add(
+        consent=True, prompt="Another question", response="Wrong answer",
+        correction="Approved correction", rating=5, language="en",
+    )
+    store.review(approved_id, approved=True)
+    approved_output = tmp_path / "approved-records.jsonl"
+    assert store.export_approved(approved_output)["records"] == 1
 
-    manifest = json.loads(output.with_suffix(".jsonl.manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads(approved_output.with_suffix(".jsonl.manifest.json").read_text(encoding="utf-8"))
     store.mark_exported(manifest["record_hashes"])
-    with pytest.raises(ValueError, match="cannot be re-reviewed"):
-        store.review(record_id, approved=False)
+    with pytest.raises(ValueError, match="decisions are immutable"):
+        store.review(approved_id, approved=False)
 
 
 def test_feedback_review_rejects_unknown_ids_and_invalid_actions(tmp_path):
