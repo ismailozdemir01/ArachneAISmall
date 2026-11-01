@@ -3,6 +3,7 @@ import struct
 
 import sentencepiece as spm
 import torch
+import pytest
 
 from arachne_small.data import TokenBlockDataset, encode_jsonl
 
@@ -66,3 +67,26 @@ def test_encode_jsonl_records_tokenizer_and_file_provenance(tmp_path):
     assert metadata["special_tokens"]["eos_id"] == processor.eos_id()
     assert metadata["token_file_sha256"]
     assert TokenBlockDataset(output, seq_len=2)[0][0].numel() == 2
+
+
+
+def test_encode_jsonl_never_overwrites_existing_token_outputs(tmp_path):
+    corpus = tmp_path / "tokenizer-corpus.txt"
+    corpus.write_text(
+        "\n".join(f"tokenizer sample document {index} ABCDEFGHIJKLMNOPQRSTUVWXYZ" for index in range(200)),
+        encoding="utf-8",
+    )
+    prefix = tmp_path / "tokenizer"
+    spm.SentencePieceTrainer.train(
+        input=str(corpus), model_prefix=str(prefix), vocab_size=80,
+        model_type="bpe", character_coverage=1.0,
+        pad_id=0, unk_id=1, bos_id=2, eos_id=3, hard_vocab_limit=False,
+    )
+    source = tmp_path / "input.jsonl"
+    source.write_text(json.dumps({"text": "A valid training document."}) + "\n", encoding="utf-8")
+    target = tmp_path / "tokens.bin"
+    target.write_bytes(b"preserve token file")
+    with pytest.raises(FileExistsError):
+        encode_jsonl(str(source), str(target), str(tmp_path / "tokenizer.model"))
+    assert target.read_bytes() == b"preserve token file"
+    assert not list(tmp_path.glob(".tokens.bin.*.tmp"))
