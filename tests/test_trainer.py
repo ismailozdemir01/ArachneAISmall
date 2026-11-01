@@ -28,6 +28,7 @@ def _write_tokens(path, token_ids, tokenizer_hash, vocab_size, special_tokens):
 def test_tiny_training_writes_versioned_model_and_checkpoint(tmp_path):
     from safetensors.torch import load_file
     from arachne_small.artifacts import verify_artifact, load_model
+    from arachne_small.learning import evaluate_artifact
 
     tokenizer_prefix = tmp_path / "tokenizer"
     tokenizer_corpus = tmp_path / "tokenizer-corpus.txt"
@@ -77,6 +78,9 @@ def test_tiny_training_writes_versioned_model_and_checkpoint(tmp_path):
     manifest = json.loads((tmp_path / "run" / "artifact-manifest.json").read_text(encoding="utf-8"))
     verified = verify_artifact(tmp_path / "run")
     loaded_model, loaded_tokenizer = load_model(tmp_path / "run")
+    evaluation = evaluate_artifact(
+        tmp_path / "run", validation_path, batch_size=1, max_batches=1
+    )
 
     assert loaded_model.config.vocab_size == vocab_size
     assert loaded_tokenizer.vocab_size() == vocab_size
@@ -88,6 +92,8 @@ def test_tiny_training_writes_versioned_model_and_checkpoint(tmp_path):
     assert manifest["training_steps_completed"] == 1
     assert manifest["parameter_count"] == config.model.parameter_count()
     assert manifest["training_tokens_processed"] > 0
+    assert evaluation["validation_loss"] >= 0
+    assert evaluation["batches_evaluated"] == 1
     assert manifest["final_validation_loss"] >= 0
     assert (tmp_path / "run" / "tokenizer.model").read_bytes() == tokenizer_path.read_bytes()
     assert (tmp_path / "run" / "checkpoints" / "step-00000001.pt").is_file()
