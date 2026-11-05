@@ -388,25 +388,21 @@ def run_self_taught_cycle(
         license_name="Mixed per-page CC BY-SA 3.0/4.0; exact page license and attribution are recorded per document.",
     )
     split_train_jsonl = split_dir / "train.jsonl"
-    split_validation_jsonl = split_dir / "validation.jsonl"
+    validation_jsonl = split_dir / "validation.jsonl"
     replay_dir = work_root / "replay"
     if replay_dir.is_symlink():
         raise ValueError("Persistent replay directory cannot be a symbolic link.")
     replay_dir.mkdir(parents=True, exist_ok=True)
     train_jsonl = replay_dir / "train.jsonl"
-    validation_jsonl = replay_dir / "validation.jsonl"
     replay_tokenizer = replay_dir / "tokenizer.model"
-    validation_tokens = replay_dir / "validation.bin"
+    validation_tokens = cycle / "validation.bin"
     train_tokens = cycle / "train.bin"
-    if any(path.is_symlink() for path in (train_jsonl, validation_jsonl, replay_tokenizer, validation_tokens, Path(str(validation_tokens) + ".json"))):
+    if any(path.is_symlink() for path in (train_jsonl, replay_tokenizer, validation_tokens, Path(str(validation_tokens) + ".json"))):
         raise ValueError("Persistent replay files cannot be symbolic links.")
-    if train_jsonl.exists() != validation_jsonl.exists():
-        raise RuntimeError("Persistent replay corpus is incomplete; refusing to rebuild or overwrite it.")
     if train_jsonl.exists():
-        _atomic_copy_or_append(raw_path, train_jsonl, append=True)
+        _atomic_copy_or_append(split_train_jsonl, train_jsonl, append=True)
     else:
         _atomic_copy_or_append(split_train_jsonl, train_jsonl, append=False)
-        _atomic_copy_or_append(split_validation_jsonl, validation_jsonl, append=False)
 
     current_version = _read_release_version(release_root)
     base_artifact = release_root / current_version if current_version else None
@@ -457,14 +453,7 @@ def run_self_taught_cycle(
             _atomic_copy_or_append(generated_tokenizer, replay_tokenizer, append=False)
             tokenizer_path = replay_tokenizer
     processor = spm.SentencePieceProcessor(model_file=str(tokenizer_path))
-    if validation_tokens.is_file():
-        validation_metadata = json.loads(
-            Path(str(validation_tokens) + ".json").read_text(encoding="utf-8")
-        )
-        if validation_metadata.get("tokenizer_sha256") != sha256_file(tokenizer_path):
-            raise ValueError("Persistent validation tokens do not match the replay tokenizer.")
-    else:
-        encode_jsonl(str(validation_jsonl), str(validation_tokens), str(tokenizer_path), "text", processor.eos_id())
+    encode_jsonl(str(validation_jsonl), str(validation_tokens), str(tokenizer_path), "text", processor.eos_id())
     encode_jsonl(str(train_jsonl), str(train_tokens), str(tokenizer_path), "text", processor.eos_id())
 
     candidate_dir = artifact_root / cycle_id
