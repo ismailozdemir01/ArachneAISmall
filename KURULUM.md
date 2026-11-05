@@ -131,7 +131,7 @@ Model paketi yapılandırılmamışsa `/api/status` yanıtında `ready: false` v
 
 ## 6. Doğrulanmış model paketiyle çıkarım
 
-Gerçek metin üretimi için eğitim tamamlanmış ve proje artifact doğrulamasından geçen bir model paketi gerekir. Paket dizininde model ağırlıkları, tokenizer, model yapılandırması ve bütünlük manifesti bulunmalıdır.
+Gerçek metin üretimi için eğitim tamamlanmış bir model gerekir. Eğitim sırasında `output_dir/arachne_small.pt` dosyası oluşturulur; başlangıçta `initialized`, eğitim sırasında `training`, yalnızca son doğrulama tamamlandığında `trained` durumuna geçer. Sunucu yalnızca `trained` durumundaki `.pt` dosyasını yükler. Ayrıca mevcut SafeTensors artifact dizinleri de desteklenir. `.pt` yüklemesi `weights_only=True`, mimari/tensör şekli ve tokenizer SHA-256 kontrolleriyle yapılır.
 
 Windows PowerShell:
 
@@ -147,7 +147,7 @@ export ARACHNE_SMALL_ARTIFACT="$PWD/artifacts/arachne-small-1.5b"
 arachne-small serve
 ```
 
-Yukarıdaki dizin yalnızca örnek yoldur. Gerçek, tamamlanmış ve doğrulanabilir artifact dizininizin yolunu kullanın. Henüz böyle bir paketiniz yoksa bu ortam değişkenini tanımlamayın. Sunucu yükleme hatasını loglar; doğrulama başarısız olduğunda model hazır durumuna geçmez.
+Yukarıdaki dizin yalnızca örnek yoldur. Tamamlanmış `.pt` dosyasının veya SafeTensors artifact dizininin yolunu kullanın. `ARACHNE_SMALL_ARTIFACT` tanımlanmazsa sunucu `./artifacts` altında en yeni yüklenebilir modeli otomatik arar. `arachne_small.pt` henüz `trained` durumuna ulaşmadıysa yüklenmez. Sunucu yükleme hatasını loglar; doğrulama başarısız olduğunda model hazır durumuna geçmez.
 
 Sunucu çalışırken:
 
@@ -180,7 +180,7 @@ arachne-small train \
   --tokenizer artifacts/tokenizer/arachne.model
 ```
 
-1.5B yapılandırması yüksek GPU belleği, depolama ve uzun eğitim süresi gerektirir. Eğitim verisi, tokenizer veya model ağırlıkları bu komutla otomatik olarak indirilmez.
+1.5B yapılandırması çok yüksek GPU belleği, depolama ve uzun eğitim süresi gerektirir. Eğitim verisi, tokenizer veya model ağırlıkları bu komutla otomatik olarak indirilmez. Eğitim başlar başlamaz `arachne_small.pt` başlangıç checkpoint'i yazılır; kayıt aralıklarında güncellenir ve eğitim/doğrulama tamamlanınca `trained` olarak işaretlenir. Kesilen eğitimde `.pt` dosyasını doğrudan `--resume` için kullanmayın; `checkpoints/step-XXXXXXXX.pt` dosyaları optimizer durumunu içeren devam checkpoint'leridir.
 
 ## 8. Yerel testleri çalıştırma
 
