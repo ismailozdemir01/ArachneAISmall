@@ -1,0 +1,362 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import os
+import re
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+from pathlib import Path
+from typing import Any
+
+import sentencepiece as spm
+
+from .config import Config, ModelConfig, TrainingConfig, load_config
+from .corpus import prepare_corpus, export_text
+from .data import encode_jsonl
+from .trainer import train
+from .artifacts import verify_artifact
+from .learning import promote_candidate, _read_release_version
+
+LOGGER = logging.getLogger("arachne_small.self_taught")
+USER_AGENT = "ArachneAISmall/0.1 (autonomous research crawler; contact: github.com/ismailozdemir01/ArachneAISmall)"
+WIKIPEDIA_LANGUAGES = ("tr", "en")
+_ALLOWED_LICENSES = {
+    "https://creativecommons.org/licenses/by-sa/4.0/",
+    "https://creativecommons.org/licenses/by-sa/3.0/",
+}
+_MIN_DOCUMENT_CHARS = 350
+_MAX_DOCUMENT_CHARS = 24000
+_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+_CONTACT_OR_SECRET = re.compile(
+    r"(?:[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}|"
+    r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|"
+    r"\\bAKIA[0-9A-Z]{16}\\b|"
+    r"\\bgh[pousr]_[A-Za-z0-9]{20,}\\b)",
+    re.IGNORECASE,
+)
+
+
+def _get_json(url: str, *, timeout: float = 20.0) -> dict[str, Any]:
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+        method="GET",
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        final = urllib.parse.urlparse(response.geturl())
+        original = urllib.parse.urlparse(url)
+        if final.scheme != "https" or final.hostname != original.hostname:
+            raise ValueError("Wikimedia request redirected outside its HTTPS origin.")
+        raw = response.read(_MAX_RESPONSE_BYTES + 1)
+    if len(raw) > _MAX_RESPONSE_BYTES:
+        raise ValueError("Wikimedia response exceeded the configured size limit.")
+    value = json.loads(raw.decode("utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError("Wikimedia API returned an invalid JSON object.")
+    return value
+
+
+def _is_approved_license(page: dict[str, Any]) -> tuple[str, str] | None:
+    license_data = page.get("license")
+    if not isinstance(license_data, dict):
+        return None
+    title = license_data.get("title")
+    url = license_data.get("url")
+    if not isinstance(title, str) or not isinstance(url, str):
+        return None
+    normalized_url = url if url.startswith("https:") else "https:" + url if url.startswith("//") else url
+    if normalized_url.rstrip("/") + "/" not in _ALLOWED_LICENSES:
+        return None
+    return title, normalized_url
+
+
+def _is_living_person_category(language: str, categories: list[dict[str, Any]]) -> bool:
+    prefixes = ("living people", "yaşayan insanlar") if language == "tr" else ("living people",)
+    for category in categories:
+        if not isinstance(category, dict):
+            continue
+        name = str(category.get("title", "")).casefold()
+        if any(prefix in name for prefix in prefixes):
+            return True
+    return False
+
+
+def _fetch_page(language: str) -> dict[str, Any] | None:
+    host = f"{language}.wikipedia.org"
+    summary = _get_json(f"https://{host}/api/rest_v1/page/random/summary")
+    title = summary.get("title")
+    extract = summary.get("extract")
+    if not isinstance(title, str) or not isinstance(extract, str):
+        return None
+    text = " ".join(extract.split())
+    if len(text) < _MIN_DOCUMENT_CHARS or len(text) > _MAX_DOCUMENT_CHARS:
+        return None
+    if _CONTACT_OR_SECRET.search(text):
+        return None
+
+    encoded_title = urllib.parse.quote(title.replace(" ", "_"), safe="")
+    page = _get_json(f"https://{host}/w/rest.php/v1/page/{encoded_title}/bare")
+    approved = _is_approved_license(page)
+    if approved is None:
+        LOGGER.debug("Skipped %s:%s because its page license is not on the allowlist.", language, title)
+        return None
+
+    page_id = page.get("id")
+    revision = page.get("latest")
+    if not isinstance(page_id, int) or not isinstance(revision, dict):
+        return None
+    revision_id = revision.get("id")
+    if not isinstance(revision_id, int):
+        return None
+
+    query = urllib.parse.urlencode({
+        "action": "query", "format": "json", "prop": "categories",
+        "cllimit": "max", "titles": title,
+    })
+    categories_response = _get_json(f"https://{host}/w/api.php?{query}")
+    pages = categories_response.get("query", {}).get("pages", {})
+    categories: list[dict[str, Any]] = []
+    if isinstance(pages, dict):
+        for page_data in pages.values():
+            if isinstance(page_data, dict) and isinstance(page_data.get("categories"), list):
+                categories.extend(page_data["categories"])
+    if _is_living_person_category(language, categories):
+        return None
+
+    license_title, license_url = approved
+    page_url = f"https://{host}/wiki/{encoded_title}"
+    return {
+        "text": f"<|language:{language}|>\n{title}\n{text}",
+        "provenance": {
+            "source": "Wikimedia Wikipedia",
+            "language": language,
+            "title": title,
+            "page_url": page_url,
+            "history_url": page_url + "?action=history",
+            "revision_id": revision_id,
+            "page_id": page_id,
+            "license": license_title,
+            "license_url": license_url,
+            "retrieved_at": int(time.time()),
+            "modification": "Extract normalized and prefixed with language marker for language-model training.",
+        },
+    }
+
+
+def acquire_wikipedia_corpus(
+    output_jsonl: str | Path,
+    *,
+    articles_per_language: int = 40,
+    request_delay_seconds: float = 1.1,
+    max_attempts_per_language: int | None = None,
+) -> dict[str, Any]:
+    """Acquire only per-page CC BY-SA 3.0/4.0 Wikipedia extracts with provenance."""
+    if isinstance(articles_per_language, bool) or not isinstance(articles_per_language, int) or not 10 <= articles_per_language <= 500:
+        raise ValueError("articles_per_language must be between 10 and 500.")
+    if not isinstance(request_delay_seconds, (int, float)) or request_delay_seconds < 1.0:
+        raise ValueError("Wikimedia request delay must be at least one second.")
+    target = Path(output_jsonl).expanduser()
+    if target.is_symlink() or target.exists():
+        raise FileExistsError(f"Corpus output already exists or is a symbolic link: {target}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    attempts_limit = max_attempts_per_language or articles_per_language * 8
+    counts = {language: 0 for language in WIKIPEDIA_LANGUAGES}
+    seen: set[tuple[str, int]] = set()
+    records = 0
+    try:
+        with target.open("x", encoding="utf-8", newline="\n") as output:
+            for language in WIKIPEDIA_LANGUAGES:
+                attempts = 0
+                while counts[language] < articles_per_language and attempts < attempts_limit:
+                    attempts += 1
+                    try:
+                        record = _fetch_page(language)
+                        if record is not None:
+                            provenance = record["provenance"]
+                            identity = (language, provenance["page_id"])
+                            if identity not in seen:
+                                seen.add(identity)
+                                output.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + "\n")
+                                output.flush()
+                                counts[language] += 1
+                                records += 1
+                    except (OSError, ValueError, KeyError, TypeError, urllib.error.URLError) as exc:
+                        LOGGER.warning("Wikimedia %s acquisition attempt %d failed: %s", language, attempts, exc)
+                    time.sleep(float(request_delay_seconds))
+        if min(counts.values()) < 10:
+            raise RuntimeError(
+                f"Insufficient licensed documents were acquired: {counts}. "
+                "No training cycle was started."
+            )
+        return {
+            "records": records,
+            "by_language": counts,
+            "sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+            "source": "Wikimedia Wikipedia REST and Action APIs",
+            "license_policy": sorted(_ALLOWED_LICENSES),
+            "output": str(target),
+        }
+    except Exception:
+        target.unlink(missing_ok=True)
+        raise
+
+
+def _write_tokenizer(corpus_text: Path, output_prefix: Path, vocab_size: int = 4000) -> Path:
+    output_prefix.parent.mkdir(parents=True, exist_ok=True)
+    spm.SentencePieceTrainer.train(
+        input=str(corpus_text),
+        model_prefix=str(output_prefix),
+        vocab_size=vocab_size,
+        model_type="bpe",
+        character_coverage=0.9999,
+        pad_id=0, unk_id=1, bos_id=2, eos_id=3,
+        hard_vocab_limit=False,
+        input_sentence_size=0,
+        shuffle_input_sentence=False,
+    )
+    model_path = output_prefix.with_suffix(".model")
+    processor = spm.SentencePieceProcessor(model_file=str(model_path))
+    if processor.vocab_size() < 256:
+        raise RuntimeError("Acquired corpus is too small to train a usable tokenizer.")
+    return model_path
+
+
+def _bootstrap_config(vocab_size: int, output_dir: Path) -> Config:
+    # Conservative from-scratch bootstrap model; it is not the 1.5B target model.
+    model = ModelConfig(
+        vocab_size=vocab_size, d_model=128, n_layers=4, n_heads=4,
+        n_kv_heads=2, max_seq_len=256, intermediate_size=352,
+        tie_embeddings=False, gradient_checkpointing=False,
+    )
+    training = TrainingConfig(
+        seed=1337, batch_size=2, gradient_accumulation_steps=1,
+        max_steps=80, learning_rate=3e-4, min_learning_rate=3e-5,
+        warmup_steps=8, weight_decay=0.1, grad_clip=1.0,
+        eval_interval=20, save_interval=20, precision="fp32",
+        num_workers=0, output_dir=str(output_dir),
+    )
+    config = Config(model, training)
+    config.model.validate()
+    config.training.validate()
+    return config
+
+
+def _continued_config(base_artifact: Path, output_dir: Path) -> Config:
+    raw = json.loads((base_artifact / "config.json").read_text(encoding="utf-8"))
+    model = ModelConfig(**raw["model"])
+    config = load_config(Path(__file__).resolve().parents[2] / "configs" / "self_taught.yaml") if (
+        Path(__file__).resolve().parents[2] / "configs" / "self_taught.yaml"
+    ).is_file() else _bootstrap_config(model.vocab_size, output_dir)
+    training = TrainingConfig(
+        seed=config.training.seed, batch_size=config.training.batch_size,
+        gradient_accumulation_steps=config.training.gradient_accumulation_steps,
+        max_steps=config.training.max_steps, learning_rate=config.training.learning_rate,
+        min_learning_rate=config.training.min_learning_rate, warmup_steps=config.training.warmup_steps,
+        weight_decay=config.training.weight_decay, grad_clip=config.training.grad_clip,
+        eval_interval=config.training.eval_interval, save_interval=config.training.save_interval,
+        precision="fp32", num_workers=0, output_dir=str(output_dir),
+    )
+    return Config(model, training)
+
+
+def run_self_taught_cycle(
+    *,
+    work_root: str | Path = "data/self_taught",
+    artifact_root: str | Path = "artifacts/self_taught",
+    release_root: str | Path = "artifacts/releases",
+    articles_per_language: int = 40,
+) -> dict[str, Any]:
+    """Acquire licensed data, bootstrap or improve the model, evaluate, and promote safely."""
+    work_root = Path(work_root).expanduser()
+    artifact_root = Path(artifact_root).expanduser()
+    release_root = Path(release_root).expanduser()
+    for path in (work_root, artifact_root, release_root):
+        if path.is_symlink():
+            raise ValueError(f"Self-taught path cannot be a symbolic link: {path}")
+    cycle_id = f"cycle-{int(time.time())}-{uuid.uuid4().hex[:8]}"
+    cycle = work_root / cycle_id
+    cycle.mkdir(parents=True, exist_ok=False)
+    artifact_root.mkdir(parents=True, exist_ok=True)
+    release_root.mkdir(parents=True, exist_ok=True)
+
+    raw_path = cycle / "wikipedia.jsonl"
+    acquisition = acquire_wikipedia_corpus(raw_path, articles_per_language=articles_per_language)
+    split_dir = cycle / "split"
+    dataset_manifest = prepare_corpus(
+        str(raw_path), str(split_dir), text_field="text",
+        validation_fraction=0.1, seed=1337,
+        source="Wikimedia Wikipedia per-page REST metadata; see raw JSONL provenance",
+        license_name="Mixed per-page CC BY-SA 3.0/4.0; exact page license and attribution are recorded per document.",
+    )
+    train_jsonl = split_dir / "train.jsonl"
+    validation_jsonl = split_dir / "validation.jsonl"
+    train_tokens = cycle / "train.bin"
+    validation_tokens = cycle / "validation.bin"
+
+    current_version = _read_release_version(release_root)
+    base_artifact = release_root / current_version if current_version else None
+    if base_artifact is not None:
+        verify_artifact(base_artifact)
+        tokenizer_path = base_artifact / "tokenizer.model"
+    else:
+        tokenizer_prefix = cycle / "tokenizer" / "arachne"
+        tokenizer_path = _write_tokenizer(
+            Path(export_text(str(train_jsonl), str(cycle / "tokenizer-corpus.txt")) and cycle / "tokenizer-corpus.txt"),
+            tokenizer_prefix,
+        )
+    processor = spm.SentencePieceProcessor(model_file=str(tokenizer_path))
+    encode_jsonl(str(train_jsonl), str(train_tokens), str(tokenizer_path), "text", processor.eos_id())
+    encode_jsonl(str(validation_jsonl), str(validation_tokens), str(tokenizer_path), "text", processor.eos_id())
+
+    candidate_dir = artifact_root / cycle_id
+    config = (
+        _continued_config(base_artifact, candidate_dir)
+        if base_artifact is not None
+        else _bootstrap_config(processor.vocab_size(), candidate_dir)
+    )
+    model_path = train(
+        config, str(train_tokens), str(validation_tokens), str(tokenizer_path),
+        initial_artifact=str(base_artifact) if base_artifact is not None else None,
+    )
+    candidate_dir = model_path.parent
+    candidate_summary = verify_artifact(candidate_dir)
+    result: dict[str, Any] = {
+        "cycle_id": cycle_id,
+        "acquisition": acquisition,
+        "dataset": dataset_manifest,
+        "candidate_artifact": str(candidate_dir),
+        "candidate_weights_sha256": candidate_summary["weights_sha256"],
+        "parameter_count": candidate_summary["parameter_count"],
+        "training_steps": candidate_summary["training_steps_completed"],
+        "validation_loss": candidate_summary["final_validation_loss"],
+        "bootstrap": base_artifact is None,
+        "promoted": False,
+    }
+    if base_artifact is not None:
+        gate = promote_candidate(
+            candidate_dir, base_artifact, validation_tokens, release_root,
+            max_loss_regression=0.0, batch_size=1, max_batches=200,
+        )
+        result["promotion"] = gate
+        result["promoted"] = True
+    else:
+        # The first completed training run becomes the initial immutable release.
+        from .learning import _release_content_hash
+        version = _release_content_hash(candidate_summary)
+        destination = release_root / version
+        if destination.exists():
+            raise FileExistsError(f"Initial model release already exists: {destination}")
+        import shutil
+        shutil.copytree(candidate_dir, destination)
+        pointer = release_root / "current.json"
+        temporary = release_root / f".current-{uuid.uuid4().hex}.tmp"
+        temporary.write_text(json.dumps({"version": version}, indent=2) + "\n", encoding="utf-8")
+        os.replace(temporary, pointer)
+        result["promotion"] = {"version": version, "artifact": str(destination), "bootstrap": True}
+        result["promoted"] = True
+    return result
