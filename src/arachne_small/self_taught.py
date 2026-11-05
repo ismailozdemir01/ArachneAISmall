@@ -19,7 +19,7 @@ import sentencepiece as spm
 
 from .config import Config, ModelConfig, TrainingConfig, load_config
 from .corpus import prepare_corpus, export_text
-from .data import encode_jsonl
+from .data import encode_jsonl, sha256_file
 from .trainer import train
 from .artifacts import verify_artifact
 from .learning import promote_candidate, _read_release_version
@@ -189,6 +189,7 @@ def acquire_wikipedia_corpus(
     attempts_limit = max_attempts_per_language or articles_per_language * 8
     counts = {language: 0 for language in WIKIPEDIA_LANGUAGES}
     seen: set[tuple[str, int]] = set()
+    seen_content: set[str] = set()
     database = None
     if seen_database is not None:
         seen_path = Path(seen_database).expanduser()
@@ -198,6 +199,7 @@ def acquire_wikipedia_corpus(
         database = sqlite3.connect(seen_path, timeout=30)
         database.execute("PRAGMA journal_mode=WAL")
         database.execute("CREATE TABLE IF NOT EXISTS seen_pages (language TEXT NOT NULL, page_id INTEGER NOT NULL, PRIMARY KEY(language, page_id))")
+        database.execute("CREATE TABLE IF NOT EXISTS seen_content (content_sha256 TEXT PRIMARY KEY)")
         database.execute("BEGIN IMMEDIATE")
     records = 0
     try:
@@ -211,18 +213,29 @@ def acquire_wikipedia_corpus(
                         if record is not None:
                             provenance = record["provenance"]
                             identity = (language, provenance["page_id"])
-                            already_seen = identity in seen
+                            content_hash = hashlib.sha256(record["text"].encode("utf-8")).hexdigest()
+                            already_seen = identity in seen or content_hash in seen_content
                             if database is not None and not already_seen:
                                 already_seen = database.execute(
                                     "SELECT 1 FROM seen_pages WHERE language=? AND page_id=?",
                                     identity,
                                 ).fetchone() is not None
+                                if not already_seen:
+                                    already_seen = database.execute(
+                                        "SELECT 1 FROM seen_content WHERE content_sha256=?",
+                                        (content_hash,),
+                                    ).fetchone() is not None
                             if not already_seen:
                                 seen.add(identity)
+                                seen_content.add(content_hash)
                                 if database is not None:
                                     database.execute(
                                         "INSERT INTO seen_pages(language,page_id) VALUES(?,?)",
                                         identity,
+                                    )
+                                    database.execute(
+                                        "INSERT INTO seen_content(content_sha256) VALUES(?)",
+                                        (content_hash,),
                                     )
                                 output.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + "\n")
                                 output.flush()
@@ -385,6 +398,8 @@ def run_self_taught_cycle(
     replay_tokenizer = replay_dir / "tokenizer.model"
     validation_tokens = replay_dir / "validation.bin"
     train_tokens = cycle / "train.bin"
+    if any(path.is_symlink() for path in (train_jsonl, validation_jsonl, replay_tokenizer, validation_tokens, Path(str(validation_tokens) + ".json"))):
+        raise ValueError("Persistent replay files cannot be symbolic links.")
     if train_jsonl.exists() != validation_jsonl.exists():
         raise RuntimeError("Persistent replay corpus is incomplete; refusing to rebuild or overwrite it.")
     if train_jsonl.exists():
