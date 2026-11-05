@@ -19,7 +19,7 @@ The initial bootstrap profile is intentionally small (128 hidden dimensions, 4 l
 
 ## Continual loop
 
-After bootstrap, the worker repeats acquisition and training every six hours by default. It reuses the current model's tokenizer and architecture, initializes candidate weights from the current verified release, appends newly acquired documents to a persistent deduplicated replay corpus, and evaluates baseline and candidate on the fixed held-out validation set created during bootstrap. The validation set is never added to training. A candidate is promoted only when validation loss is no worse than the baseline. Promotion is content-addressed and atomic. The server loads the promoted model only after successful validation; failed acquisition, training, evaluation or activation leaves the current model active.
+After bootstrap, the worker repeats acquisition and training every six hours by default. It reuses the current model's tokenizer and architecture, initializes candidate weights from the current verified release, appends only the current cycle's training split to a persistent deduplicated replay corpus, and evaluates baseline and candidate on that cycle's fresh held-out validation split. No cycle's validation documents are ever added to gradient training. A candidate is promoted only when validation loss is no worse than the baseline. Promotion is content-addressed and atomic. The server loads the promoted model only after successful validation; failed acquisition, training, evaluation or activation leaves the current model active.
 
 The worker never trains on raw chat traffic or its own generated answers. User corrections remain on the separate explicit-consent and review workflow. This avoids silently harvesting conversations and reduces self-reinforcing synthetic-data errors.
 
@@ -28,7 +28,7 @@ The worker never trains on raw chat traffic or its own generated answers. User c
 - `data/self_taught/cycle-*/wikipedia.jsonl`: acquired text with per-page provenance.
 - `data/self_taught/cycle-*/split/`: per-cycle deduplicated train/validation documents and manifest.
 - `data/self_taught/replay/train.jsonl`: cumulative training replay corpus, including new licensed pages from successful acquisition cycles.
-- `data/self_taught/replay/validation.jsonl` and `validation.bin`: fixed bootstrap holdout, never used for gradient updates.
+- `data/self_taught/cycle-*/split/validation.jsonl` and `validation.bin`: fresh per-cycle holdout, never used for gradient updates.
 - `data/self_taught/seen-pages.sqlite3`: cross-cycle page-ID and content-hash deduplication index.
 - `artifacts/self_taught/cycle-*/arachne_small.pt`: PyTorch model checkpoint.
 - `artifacts/self_taught/cycle-*/checkpoints/`: optimizer-aware resume checkpoints.
@@ -62,7 +62,7 @@ Wikimedia's own documentation warns that license and attribution metadata can be
 - Network collection is limited to the two Wikimedia Wikipedia REST/API origins and uses a descriptive User-Agent and a one-request-per-second throttle.
 - Only text extracts are collected; images and media are not downloaded.
 - The worker does not execute downloaded code, install external modules, or fetch third-party model checkpoints.
-- The bootstrap data is split at document level. The validation set remains fixed and is never used for gradient updates. Later acquisitions are appended only to the cumulative training replay corpus.
+- Every acquisition batch is split at document level. Only its training split is appended to the cumulative replay corpus; its fresh validation split is used for that cycle's paired baseline/candidate evaluation and is never used for gradient updates.
 - Page IDs and normalized document content are deduplicated across cycles to reduce validation contamination.
 - A rejected candidate never replaces the active model.
 - The bootstrap model is deliberately small. Moving to the 1.5B configuration requires suitable compute and a separate measured scaling/training plan; the worker does not silently claim or fabricate a 1.5B model.
