@@ -477,7 +477,7 @@ Kaynak kodu [Apache License 2.0](LICENSE) ile lisanslanmıştır. Depo kodunun l
 
 ## Otomatik Self-Taught Öğrenme
 
-`arachne-small serve` başlatıldığında self-taught işçisi varsayılan olarak arka planda çalışır. Türkçe ve İngilizce Wikipedia REST API'lerinden sayfa bazında lisansı doğrulanabilen CC BY-SA 3.0/4.0 metinleri toplar; sayfa ve revision atıflarını korur; veri kümesini ayırır; tokenizer'ı eğitir; ilk küçük Transformer modelini sıfırdan eğiterek `arachne_small.pt` oluşturur. Sonraki döngülerde yeni verileri birikimli ve tekilleştirilmiş replay korpusuna ekler; sabit doğrulama kümesini eğitim dışında tutarak aday modeli baseline ile karşılaştırır ve yalnızca kayıp değeri gerilemeyen adayı etkinleştirir.
+`arachne-small serve` başlatıldığında self-taught işçisi varsayılan olarak arka planda çalışır. Türkçe ve İngilizce Wikipedia REST API'lerinden sayfa bazında lisansı doğrulanabilen CC BY-SA 3.0/4.0 metinleri toplar; sayfa ve revision atıflarını korur; veri kümesini ayırır; tokenizer'ı eğitir; ilk küçük Transformer modelini sıfırdan eğiterek `arachne_small.pt` oluşturur. Sonraki döngülerde yeni verileri birikimli ve tekilleştirilmiş replay korpusuna ekler; her döngünün yeni doğrulama kümesini eğitim dışında tutarak aday modeli baseline ile karşılaştırır ve yalnızca kayıp değeri gerilemeyen adayı etkinleştirir.
 
 - İlk bootstrap yaklaşık 1.8M parametredir; 1.5B hedef model değildir.
 - Varsayılan döngü aralığı 6 saattir.
