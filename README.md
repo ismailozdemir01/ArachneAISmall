@@ -6,7 +6,13 @@
   From-scratch Turkish–English language-model engineering, training, and secure local runtime.
 </p>
 
-[🇹🇷 Türkçe dokümantasyon](README_TR.md) · [🇬🇧 English documentation](#english) · [Kurulum / Installation](KURULUM.md)
+[🇹🇷 Türkçe](#türkçe) · [🇬🇧 English](#english) · [Kurulum / Installation](KURULUM.md) · [Model Kartı](docs/MODEL_CARD.md)
+
+> **Güncel sürüm durumu / Current release status**
+>
+> **TR:** Kaynak kodu, eğitim hattı, API ve web arayüzü kullanılabilir. Ancak Git deposunda eğitilmiş model ağırlıkları veya hazır bir model paketi bulunmaz. Bu nedenle sunucunun açılması, sohbet üretiminin hazır olduğu anlamına gelmez. Gerçek yanıt üretimi için lisans/kullanım hakkı doğrulanmış veriyle eğitim tamamlanmalı, artifact oluşturulmalı ve doğrulanmalıdır. Model hazır değilken API bilerek HTTP 503 döndürür; rastgele ağırlıklarla sahte yanıt üretmez.
+>
+> **EN:** The source code, training pipeline, API, and web interface are available. The Git repository does not contain trained model weights or a ready-to-use model package. Starting the server therefore does not mean chat generation is ready. Real generation requires training on authorized data, producing an artifact, and verifying it. Until then, the API intentionally returns HTTP 503 rather than fabricating output from random weights.
 
 ---
 
