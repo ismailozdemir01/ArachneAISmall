@@ -12,7 +12,7 @@
 >
 > **TR:** Kaynak kodu, eğitim hattı, API ve web arayüzü kullanılabilir. Ancak Git deposunda eğitilmiş model ağırlıkları veya hazır bir model paketi bulunmaz. Bu nedenle sunucunun açılması, sohbet üretiminin hazır olduğu anlamına gelmez. Gerçek yanıt üretimi için lisans/kullanım hakkı doğrulanmış veriyle eğitim tamamlanmalı, artifact oluşturulmalı ve doğrulanmalıdır. Model hazır değilken API bilerek HTTP 503 döndürür; rastgele ağırlıklarla sahte yanıt üretmez.
 >
-> **EN:** The source code, training pipeline, API, and web interface are available. The Git repository does not contain trained model weights or a ready-to-use model package. Starting the server therefore does not mean chat generation is ready. Real generation requires training on authorized data, producing an artifact, and verifying it. Until then, the API intentionally returns HTTP 503 rather than fabricating output from random weights.
+> **EN:** The source code, training pipeline, API, and web interface are available. The Git repository does not ship trained weights. Running `arachne-small serve` starts an autonomous self-taught worker that acquires page-level license-checked Turkish/English Wikipedia text, trains a small bootstrap model from random initialization, and writes `arachne_small.pt`. The initial bootstrap is approximately 1.8M parameters, not the 1.5B target. Generation becomes ready only after training, validation and verified promotion complete. See [Autonomous Self-Taught Learning](docs/SELF_TAUGHT.md).
 
 ---
 
@@ -568,3 +568,18 @@ The repository currently contains the implementation and validation pipeline, no
 
 The source code is licensed under the [Apache License 2.0](LICENSE). The repository code license does not automatically apply to external datasets, third-party assets, or future trained model weights; those materials require their own applicable terms.
 
+
+
+## Autonomous Self-Taught Learning
+
+The `arachne-small serve` command enables the background self-taught worker by default. It collects Turkish and English Wikipedia article extracts through the public REST APIs, checks each page's reported license against the CC BY-SA 3.0/4.0 allowlist, and retains page/revision attribution. It filters obvious credentials/contact patterns and living-person categories, deduplicates documents, creates document-level train/validation splits, trains a tokenizer, and trains the initial Transformer from random weights.
+
+The first bootstrap is intentionally small (128 hidden dimensions, 4 layers, 256-token context; approximately 1.8M parameters). It is not the 1.5B target model. Training writes `arachne_small.pt`, updates it at checkpoint intervals, and marks it trained only after final validation. Later cycles reuse the active tokenizer and architecture, train candidate weights on newly acquired material, and promote only when held-out validation loss does not regress. The active model is atomically replaced only after the candidate release has been verified.
+
+- Default repeat interval: 6 hours.
+- No raw chat harvesting and no training on the model's own generated answers.
+- `GET /api/status` reports the self-taught worker state.
+- Set `ARACHNE_SMALL_SELF_TAUGHT=0` to disable the worker.
+- Local corpora, checkpoints and model weights remain outside Git.
+
+See [docs/SELF_TAUGHT.md](docs/SELF_TAUGHT.md) for data sources, licensing, files, configuration and operational limits.
