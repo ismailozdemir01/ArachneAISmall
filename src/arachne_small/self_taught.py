@@ -76,7 +76,7 @@ def _is_approved_license(page: dict[str, Any]) -> tuple[str, str] | None:
         return None
     title = license_data.get("title")
     url = license_data.get("url")
-    if not isinstance(title, str) or not isinstance(url, str):
+    if not isinstance(title, str) or not title.strip() or not isinstance(url, str):
         return None
     normalized_url = url if url.startswith("https:") else "https:" + url if url.startswith("//") else url
     if normalized_url.rstrip("/") + "/" not in _ALLOWED_LICENSES:
@@ -324,7 +324,7 @@ def run_self_taught_cycle(
         configured_base = os.environ.get("ARACHNE_SMALL_ARTIFACT", "").strip()
         if configured_base:
             configured_path = Path(configured_base).expanduser()
-            if configured_path.is_dir() and (configured_path / "artifact-manifest.json").is_file():
+            if not configured_path.is_symlink() and configured_path.is_dir() and (configured_path / "artifact-manifest.json").is_file():
                 base_artifact = configured_path
         if base_artifact is None:
             from .artifacts import discover_model_artifact
