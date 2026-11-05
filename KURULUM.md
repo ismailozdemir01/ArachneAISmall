@@ -92,7 +92,7 @@ Komut satırı komutu bulunamazsa sanal ortamın etkin olduğundan emin olun. Wi
 
 ## 5. API ve web arayüzünü başlatma
 
-Model ağırlıkları olmadan da servis durumunu ve web arayüzünü çalıştırabilirsiniz. Depo kök dizininde, sanal ortam etkinken:
+`arachne-small serve` API/web arayüzünü başlatır ve self-taught işçisini varsayılan olarak arka planda etkinleştirir. İşçi veri edinme, tokenizer ve ilk model eğitimini sunucu başlangıcını bloke etmeden yürütür. Depo kök dizininde, sanal ortam etkinken:
 
 ```powershell
 arachne-small serve
@@ -127,7 +127,7 @@ Beklenen sağlık yanıtı:
 }
 ```
 
-Model paketi yapılandırılmamışsa `/api/status` yanıtında `ready: false` ve `state: "artifact_missing"` görülmesi beklenir. Bu, HTTP servisinin çalışmadığı anlamına gelmez; çıkarım için doğrulanmış model paketi bulunmadığını belirtir.
+İlk self-taught döngüsü tamamlanana kadar `/api/status` içinde `ready: false` görülebilir. `self_taught.state` alanı edinme/eğitim durumunu, `last_error` son hatayı gösterir. İlk model ancak eğitim ve doğrulama başarıyla bitip yayınlandığında `ready: true` olur.
 
 ## 6. Doğrulanmış model paketiyle çıkarım
 
@@ -182,6 +182,58 @@ arachne-small train \
 
 1.5B yapılandırması çok yüksek GPU belleği, depolama ve uzun eğitim süresi gerektirir. Eğitim verisi, tokenizer veya model ağırlıkları bu komutla otomatik olarak indirilmez. Eğitim başlar başlamaz `arachne_small.pt` başlangıç checkpoint'i yazılır; kayıt aralıklarında güncellenir ve eğitim/doğrulama tamamlanınca `trained` olarak işaretlenir. Kesilen eğitimde `.pt` dosyasını doğrudan `--resume` için kullanmayın; `checkpoints/step-XXXXXXXX.pt` dosyaları optimizer durumunu içeren devam checkpoint'leridir.
 
+
+## 7A. Otomatik self-taught eğitim (varsayılan)
+
+Normal başlatma komutu:
+
+```powershell
+arachne-small serve
+```
+
+Bu komut self-taught işçisini otomatik etkinleştirir. İlk döngü:
+
+1. Türkçe ve İngilizce Wikipedia REST API'lerinden rastgele makale özetleri alır.
+2. Her makalenin REST metadata lisansını kontrol eder; yalnızca CC BY-SA 3.0/4.0 sayfalarını kabul eder.
+3. Kaynak URL'si, revision kimliği, geçmiş bağlantısı ve lisansı kayıt altına alır.
+4. Yaşayan kişi kategorilerini ve belirgin kimlik/iletişim bilgisi desenlerini filtreler.
+5. Belgeleri tekilleştirip eğitim/doğrulama kümelerine ayırır.
+6. Tokenizer'ı yalnızca eğitim kümesi üzerinde eğitir.
+7. Sıfırdan küçük bootstrap Transformer eğitir ve `artifacts/self_taught/cycle-*/arachne_small.pt` dosyasını oluşturur.
+8. Doğrulama başarılı olduğunda modeli `artifacts/releases` altında sürümlü olarak etkinleştirir.
+
+İlk model yaklaşık 1.8 milyon parametrelidir; 1.5B hedef yapılandırması değildir. Sonraki döngüler varsayılan olarak 6 saatte bir yeni makale toplar, aynı tokenizer/mimariyle aday modeli eğitir ve doğrulama kaybı baseline'dan kötü değilse yayınlar. Reddedilen aday aktif modeli değiştirmez.
+
+Durumu kontrol edin:
+
+```powershell
+(Invoke-RestMethod http://127.0.0.1:8000/api/status).self_taught | Format-List
+```
+
+İlgili dosyalar:
+- Ham kaynak ve sayfa atıfları: `data/self_taught/cycle-*/wikipedia.jsonl`
+- Bölünmüş korpus: `data/self_taught/cycle-*/split/`
+- PyTorch checkpoint: `artifacts/self_taught/cycle-*/arachne_small.pt`
+- Etkin sürüm: `artifacts/releases/current.json`
+- Yayınlanmış checkpoint: `artifacts/releases/<sha256>/arachne_small.pt`
+
+Varsayılan döngü aralığını değiştirmek için:
+
+```powershell
+$env:ARACHNE_SMALL_SELF_TAUGHT_INTERVAL = "21600"
+$env:ARACHNE_SMALL_SELF_TAUGHT_ARTICLES_PER_LANGUAGE = "40"
+arachne-small serve
+```
+
+Self-taught işçisini kapatmak için:
+
+```powershell
+$env:ARACHNE_SMALL_SELF_TAUGHT = "0"
+arachne-small serve
+```
+
+Ayrıntılı tasarım, kaynak lisansları ve sınırlar: [docs/SELF_TAUGHT.md](docs/SELF_TAUGHT.md).
+
 ## 8. Yerel testleri çalıştırma
 
 Sanal ortam etkinken:
@@ -199,7 +251,7 @@ Testler yerel makinede çalışır. Bu komut GitHub Actions/CI tetiklemez.
 - Sunucuyu doğrudan internete açmayın.
 - Uzak erişim zorunluysa en az 32 karakterlik güçlü ve benzersiz `ARACHNE_SMALL_API_TOKEN` tanımlayın; `ARACHNE_SMALL_ALLOW_REMOTE=1` ayarını yalnızca TLS, kimlik doğrulamalı reverse proxy ve ağ erişim kontrolleri hazır olduğunda kullanın.
 - API token'ını kaynak koda, Git'e, ekran görüntülerine veya loglara koymayın.
-- Yalnızca lisans ve model eğitimi kullanım hakkı doğrulanmış veri kümelerini kullanın.
+- Otomatik kaynak işçisi yalnızca sayfa metadata'sı CC BY-SA 3.0/4.0 döndüren Wikipedia içeriklerini kabul eder; otomatik kontrol hukuki görüş değildir.
 - `.env`, ham veri, yerel veritabanı, checkpoint ve model artifact dosyalarını depoya göndermeyin.
 
 ## 10. Sorun giderme
