@@ -215,7 +215,7 @@ Durumu kontrol edin:
 - Ham kaynak ve sayfa atıfları: `data/self_taught/cycle-*/wikipedia.jsonl`
 - Bölünmüş korpus: `data/self_taught/cycle-*/split/`
 - Birikimli eğitim replay korpusu: `data/self_taught/replay/train.jsonl`
-- Her döngünün doğrulama kümesi: `data/self_taught/cycle-*/split/validation.jsonl`
+- Her döngünün doğrulama kümesi: `data/self_taught/cycle-*/split/validation.jsonl` ve `data/self_taught/cycle-*/validation.bin`
 - PyTorch checkpoint: `artifacts/self_taught/cycle-*/arachne_small.pt`
 - Etkin sürüm: `artifacts/releases/current.json`
 - Yayınlanmış checkpoint: `artifacts/releases/<sha256>/arachne_small.pt`
