@@ -400,7 +400,10 @@ def promote_candidate(candidate: str | Path, baseline: str | Path,
                 source_config["tokenizer"]["file"],
                 source_config["weights"]["file"],
             }
-            if (source / "arachne_small.pt").is_file() and not (source / "arachne_small.pt").is_symlink():
+            checkpoint_file = source / "arachne_small.pt"
+            if checkpoint_file.is_symlink():
+                raise ValueError("PyTorch model checkpoint cannot be a symbolic link.")
+            if checkpoint_file.is_file():
                 inference_files.add("arachne_small.pt")
             for filename in inference_files:
                 shutil.copyfile(source / filename, staging / filename)
