@@ -12,6 +12,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
@@ -38,7 +40,13 @@ def _retry_after_seconds(value: str | None) -> float:
     try:
         seconds = float(value.strip())
     except (TypeError, ValueError):
-        return 900.0
+        try:
+            retry_at = parsedate_to_datetime(value)
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=timezone.utc)
+            seconds = (retry_at - datetime.now(timezone.utc)).total_seconds()
+        except (TypeError, ValueError, OverflowError):
+            return 900.0
     if not (seconds >= 0 and seconds < float("inf")):
         return 900.0
     return max(60.0, min(seconds, 21600.0))
@@ -81,7 +89,7 @@ def _get_json(url: str, *, timeout: float = 20.0) -> dict[str, Any]:
         response_context = urllib.request.urlopen(request, timeout=timeout)
     except urllib.error.HTTPError as exc:
         if exc.code == 429:
-            raise WikimediaRateLimited(_retry_after_seconds(exc.headers.get("Retry-After"))) from exc
+            raise WikimediaRateLimited(_retry_after_seconds(getattr(exc.headers, "get", lambda _key: None)("Retry-After"))) from exc
         raise
     with response_context as response:
         final = urllib.parse.urlparse(response.geturl())
