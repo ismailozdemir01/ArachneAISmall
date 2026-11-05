@@ -108,6 +108,14 @@ def test_tiny_training_writes_versioned_model_and_checkpoint(tmp_path):
     assert model_checkpoint["training"]["step"] == 1
     assert model_checkpoint["tokenizer_sha256"] == tokenizer_hash
     assert "token_embedding.weight" in model_checkpoint["model_state_dict"]
+    from arachne_small.artifacts import discover_model_artifact
+    pt_model, pt_tokenizer = load_model(model_checkpoint_path)
+    assert pt_model.config.vocab_size == vocab_size
+    assert pt_tokenizer.vocab_size() == vocab_size
+    discovered = discover_model_artifact(tmp_path)
+    assert discovered is not None
+    assert discovered[2] in {model_checkpoint_path, tmp_path / "run"}
+    assert discovered[0].config.vocab_size == vocab_size
     assert artifact and all(tensor.is_floating_point() for tensor in artifact.values())
 
     from dataclasses import replace
