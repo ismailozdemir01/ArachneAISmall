@@ -11,6 +11,7 @@ output_dir/
 ├── tokenizer.model
 ├── config.json
 ├── artifact-manifest.json
+├── arachne_small.pt
 ├── training.jsonl
 └── checkpoints/
     └── step-XXXXXXXX.pt
@@ -72,9 +73,13 @@ A compatible runtime must:
 5. Instantiate the decoder architecture with the exact configuration and load SafeTensors weights strictly; missing or unexpected parameter names are fatal.
 6. Keep model weights and tokenizer immutable after validation.
 
-A promoted content-addressed release contains only the four inference files required by the loader (`config.json`, `artifact-manifest.json`, the referenced tokenizer, and the referenced SafeTensors weights). Its directory identifier hashes the complete inference identity (configuration checksum, artifact-manifest checksum, tokenizer checksum, and weights checksum), not the weights alone. Training logs and optimizer checkpoints are intentionally excluded from promoted runtime releases.
+A promoted content-addressed release contains the four inference files required by the loader (`config.json`, `artifact-manifest.json`, the referenced tokenizer, and the referenced SafeTensors weights), plus `arachne_small.pt` when the source training run produced it. Its directory identifier hashes the complete inference identity (configuration checksum, artifact-manifest checksum, tokenizer checksum, and weights checksum), not the weights alone. Training logs and optimizer checkpoints are intentionally excluded from promoted runtime releases.
 
 The architecture state-dictionary names are the names emitted by `arachne_small.model.ArachneSmall`. The runtime must implement the same RMSNorm, RoPE, grouped-query causal attention, SwiGLU, residual ordering, embedding policy, and parameter names.
+
+## Portable PyTorch model checkpoint
+
+`arachne_small.pt` is atomically written at model initialization, refreshed at configured save intervals, and marked `trained` only after final validation succeeds. It contains the model configuration, model state dictionary, tokenizer SHA-256, and training status/step/token counters. It is loaded with `torch.load(..., weights_only=True)` and the loader validates the format version, architecture tensor names/shapes, finite floating-point weights, and tokenizer checksum. A checkpoint with status `initialized` or `training` is not eligible for inference. When a verified SafeTensors artifact is present in the same directory, inference prefers the SafeTensors artifact; the `.pt` file is retained as a portable PyTorch checkpoint.
 
 ## Training checkpoints
 
