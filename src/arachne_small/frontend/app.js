@@ -17,7 +17,7 @@ const translations = {
     suggest1:"Kendini tanıt",suggest2:"Problem çözme",suggest3:"Transformer mimarisi",
     promptPlaceholder:"Arachne Small'a mesaj gönder...",language:"Dil",tokens:"Yeni token",temperature:"Sıcaklık",send:"Gönder",
     disclaimer:"Model çıktıları hatalı olabilir. Henüz eğitilmemiş veya yüklenmemiş model yanıt üretemez.",
-    checking:"Model durumu kontrol ediliyor",ready:"Model hazır",missing:"Eğitilmiş model artifact'ı yüklenmemiş",error:"Model yükleme hatası",
+    checking:"Model durumu kontrol ediliyor",ready:"Model hazır",missing:"Eğitilmiş model artifact'ı yüklenmemiş",error:"Model yükleme hatası",selfTaught:"Self-Taught",selfTaughtRunning:"Veri topluyor / eğitiyor",selfTaughtWaiting:"Sonraki öğrenme döngüsü bekleniyor",selfTaughtError:"Öğrenme döngüsü hatası",selfTaughtOff:"Kapalı",
     user:"Siz",assistant:"Arachne Small",thinking:"Yanıt üretiliyor…",unavailable:"Model hazır değil. Önce eğitilmiş artifact'ı sunucuya yükleyin.",
     requestFailed:"İstek başarısız oldu",newConversation:"Yeni sohbet başlatıldı",empty:"Lütfen bir mesaj yazın.",
     feedbackTitle:"Yanıtı iyileştirmeye katkı ver",correctionPlaceholder:"Düzeltilmiş yanıtı yazın...",consentText:"Bu düzeltmenin model eğitimi için yerel olarak saklanmasına açıkça izin veriyorum.",saveFeedback:"Düzeltmeyi gönder",feedbackSaved:"Düzeltme kaydedildi",feedbackFailed:"Düzeltme kaydedilemedi",
@@ -30,7 +30,7 @@ const translations = {
     suggest1:"Introduce yourself",suggest2:"Problem solving",suggest3:"Transformer architecture",
     promptPlaceholder:"Send a message to Arachne Small...",language:"Language",tokens:"New tokens",temperature:"Temperature",send:"Send",
     disclaimer:"Model outputs may be inaccurate. A model that is not trained or loaded cannot generate responses.",
-    checking:"Checking model status",ready:"Model ready",missing:"No trained model artifact loaded",error:"Model loading error",
+    checking:"Checking model status",ready:"Model ready",missing:"No trained model artifact loaded",error:"Model loading error",selfTaught:"Self-Taught",selfTaughtRunning:"Acquiring data / training",selfTaughtWaiting:"Waiting for next learning cycle",selfTaughtError:"Learning cycle error",selfTaughtOff:"Disabled",
     user:"You",assistant:"Arachne Small",thinking:"Generating response…",unavailable:"Model is not ready. Load a trained artifact on the server first.",
     requestFailed:"Request failed",newConversation:"New conversation started",empty:"Please enter a message.",
     feedbackTitle:"Help improve the response",correctionPlaceholder:"Write the corrected answer...",consentText:"I explicitly consent to storing this correction locally for model training.",saveFeedback:"Submit correction",feedbackSaved:"Correction saved",feedbackFailed:"Could not save correction",
@@ -89,8 +89,16 @@ async function refreshStatus() {
     const response = await fetch("/api/status", { headers: { Accept: "application/json" } });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
+    const learner = data.self_taught || {};
+    const learnerLabel = !learner.enabled ? t("selfTaughtOff")
+      : learner.state === "error_retry_scheduled" ? t("selfTaughtError")
+      : learner.state === "waiting_for_next_cycle" ? t("selfTaughtWaiting")
+      : t("selfTaughtRunning");
+    $("#self-taught-value").textContent = learnerLabel;
     runtimePill.className = `status-pill ${data.ready ? "ready" : data.state === "error" ? "error" : "pending"}`;
-    runtimePill.querySelector("span").textContent = data.ready ? t("ready") : data.state === "error" ? t("error") : t("missing");
+    runtimePill.querySelector("span").textContent = data.ready ? t("ready")
+      : learner.enabled ? (learner.state === "error_retry_scheduled" ? t("selfTaughtError") : t("selfTaughtRunning"))
+      : data.state === "error" ? t("error") : t("missing");
     $("#device-value").textContent = data.device || "—";
     $("#parameter-value").textContent = data.parameter_count ? Number(data.parameter_count).toLocaleString() : "—";
     $("#context-value").textContent = data.context_length ? `${data.context_length.toLocaleString()} tokens` : "—";
@@ -98,6 +106,7 @@ async function refreshStatus() {
     $("#api-token-wrap").hidden = !data.authentication_required;
     sendButton.disabled = !data.ready || busy;
     if (data.load_error) console.error("Arachne Small load error:", data.load_error);
+    if (learner.last_error) console.error("Arachne Small self-taught error:", learner.last_error);
   } catch (error) {
     runtimePill.className = "status-pill error";
     runtimePill.querySelector("span").textContent = t("error");
@@ -249,3 +258,4 @@ document.querySelectorAll(".suggestion").forEach((button) => {
 });
 applyLanguage();
 refreshStatus();
+window.setInterval(refreshStatus, 15000);
