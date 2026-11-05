@@ -38,3 +38,82 @@ def test_trusted_registry_discovery_auto_activates_digest_verified_module(tmp_pa
     assert len(result) == 1
     assert result[0]["state"] == "active"
     assert registry.run("text-cleaner", "  HELLO  ") == "hello"
+ 
+def test_discovery_rejects_bad_entry_and_continues_with_valid_entry(tmp_path, monkeypatch):
+    spec = {
+        "id": "text-cleaner",
+        "version": "1.0.0",
+        "description": "Normalize simple text input.",
+        "operations": [{"op": "trim"}, {"op": "lowercase"}],
+        "tests": [
+            {"input": " HELLO ", "expected": "hello"},
+            {"input": " World ", "expected": "world"},
+        ],
+    }
+    raw_module = json.dumps(spec, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    digest = hashlib.sha256(raw_module).hexdigest()
+    module_url = "https://raw.githubusercontent.com/example/repo/0123456789abcdef0123456789abcdef01234567/modules/text-cleaner.json"
+    index = {
+        "format": "arachne-module-index-v1",
+        "modules": [
+            {"url": module_url, "sha256": "0" * 64},
+            {"url": module_url, "sha256": digest},
+        ],
+    }
+    raw_index = json.dumps(index).encode()
+
+    def retrieve(url, limit):
+        return raw_index if url.endswith("/index.json") else raw_module
+
+    monkeypatch.setattr(backend, "_fetch_json", retrieve)
+    registry = ModuleRegistry(tmp_path / "modules")
+    result = registry.discover([
+        "https://raw.githubusercontent.com/example/repo/0123456789abcdef0123456789abcdef01234567/index.json"
+    ])
+
+    assert len(result) == 1
+    assert result[0]["state"] == "active"
+    assert registry.run("text-cleaner", " HELLO ") == "hello"
+    rejection_records = [
+        json.loads(line)
+        for line in registry.rejections.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(rejection_records) == 1
+    assert "digest mismatch" in rejection_records[0]["reason"].lower()
+
+
+def test_discovery_removes_candidate_when_activation_fails(tmp_path, monkeypatch):
+    spec = {
+        "id": "text-cleaner",
+        "version": "1.0.0",
+        "description": "Normalize simple text input.",
+        "operations": [{"op": "trim"}, {"op": "lowercase"}],
+        "tests": [
+            {"input": " HELLO ", "expected": "hello"},
+            {"input": " World ", "expected": "world"},
+        ],
+    }
+    raw_module = json.dumps(spec, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    digest = hashlib.sha256(raw_module).hexdigest()
+    module_url = "https://raw.githubusercontent.com/example/repo/0123456789abcdef0123456789abcdef01234567/modules/text-cleaner.json"
+    index = {
+        "format": "arachne-module-index-v1",
+        "modules": [{"url": module_url, "sha256": digest}],
+    }
+    raw_index = json.dumps(index).encode()
+
+    def retrieve(url, limit):
+        return raw_index if url.endswith("/index.json") else raw_module
+
+    monkeypatch.setattr(backend, "_fetch_json", retrieve)
+    registry = ModuleRegistry(tmp_path / "modules")
+
+    def fail_activation(candidate_digest):
+        raise ModuleRejected("forced activation rejection")
+
+    monkeypatch.setattr(registry, "activate", fail_activation)
+    assert registry.discover([
+        "https://raw.githubusercontent.com/example/repo/0123456789abcdef0123456789abcdef01234567/index.json"
+    ]) == []
+    assert list(registry.candidates.glob("*.json")) == []
+    assert "forced activation rejection" in registry.rejections.read_text(encoding="utf-8")
