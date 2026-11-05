@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import sqlite3
 import time
 import threading
 import urllib.error
@@ -174,6 +175,7 @@ def acquire_wikipedia_corpus(
     articles_per_language: int = 40,
     request_delay_seconds: float = 1.1,
     max_attempts_per_language: int | None = None,
+    seen_database: str | Path | None = None,
 ) -> dict[str, Any]:
     """Acquire only per-page CC BY-SA 3.0/4.0 Wikipedia extracts with provenance."""
     if isinstance(articles_per_language, bool) or not isinstance(articles_per_language, int) or not 10 <= articles_per_language <= 500:
@@ -187,6 +189,16 @@ def acquire_wikipedia_corpus(
     attempts_limit = max_attempts_per_language or articles_per_language * 8
     counts = {language: 0 for language in WIKIPEDIA_LANGUAGES}
     seen: set[tuple[str, int]] = set()
+    database = None
+    if seen_database is not None:
+        seen_path = Path(seen_database).expanduser()
+        if seen_path.is_symlink():
+            raise ValueError("Self-taught seen-page database cannot be a symbolic link.")
+        seen_path.parent.mkdir(parents=True, exist_ok=True)
+        database = sqlite3.connect(seen_path, timeout=30)
+        database.execute("PRAGMA journal_mode=WAL")
+        database.execute("CREATE TABLE IF NOT EXISTS seen_pages (language TEXT NOT NULL, page_id INTEGER NOT NULL, PRIMARY KEY(language, page_id))")
+        database.execute("BEGIN IMMEDIATE")
     records = 0
     try:
         with target.open("x", encoding="utf-8", newline="\n") as output:
@@ -199,8 +211,19 @@ def acquire_wikipedia_corpus(
                         if record is not None:
                             provenance = record["provenance"]
                             identity = (language, provenance["page_id"])
-                            if identity not in seen:
+                            already_seen = identity in seen
+                            if database is not None and not already_seen:
+                                already_seen = database.execute(
+                                    "SELECT 1 FROM seen_pages WHERE language=? AND page_id=?",
+                                    identity,
+                                ).fetchone() is not None
+                            if not already_seen:
                                 seen.add(identity)
+                                if database is not None:
+                                    database.execute(
+                                        "INSERT INTO seen_pages(language,page_id) VALUES(?,?)",
+                                        identity,
+                                    )
                                 output.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + "\n")
                                 output.flush()
                                 counts[language] += 1
@@ -213,6 +236,8 @@ def acquire_wikipedia_corpus(
                 f"Insufficient licensed documents were acquired: {counts}. "
                 "No training cycle was started."
             )
+        if database is not None:
+            database.commit()
         return {
             "records": records,
             "by_language": counts,
@@ -222,8 +247,13 @@ def acquire_wikipedia_corpus(
             "output": str(target),
         }
     except Exception:
+        if database is not None:
+            database.rollback()
         target.unlink(missing_ok=True)
         raise
+    finally:
+        if database is not None:
+            database.close()
 
 
 def _write_tokenizer(corpus_text: Path, output_prefix: Path, vocab_size: int = 4000) -> Path:
@@ -305,7 +335,10 @@ def run_self_taught_cycle(
     release_root.mkdir(parents=True, exist_ok=True)
 
     raw_path = cycle / "wikipedia.jsonl"
-    acquisition = acquire_wikipedia_corpus(raw_path, articles_per_language=articles_per_language)
+    acquisition = acquire_wikipedia_corpus(
+        raw_path, articles_per_language=articles_per_language,
+        seen_database=work_root / "seen-pages.sqlite3",
+    )
     split_dir = cycle / "split"
     dataset_manifest = prepare_corpus(
         str(raw_path), str(split_dir), text_field="text",
