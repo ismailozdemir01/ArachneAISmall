@@ -19,7 +19,7 @@ The initial bootstrap profile is intentionally small (128 hidden dimensions, 4 l
 
 ## Continual loop
 
-After bootstrap, the worker repeats acquisition and training every six hours by default. It reuses the current model's tokenizer and architecture, initializes candidate weights from the current verified release, appends only the current cycle's training split to a persistent deduplicated replay corpus, and evaluates baseline and candidate on that cycle's fresh held-out validation split. No cycle's validation documents are ever added to gradient training. A candidate is promoted only when validation loss is no worse than the baseline. Promotion is content-addressed and atomic. The server loads the promoted model only after successful validation; failed acquisition, training, evaluation or activation leaves the current model active.
+After bootstrap, the worker repeats acquisition and training every six hours by default. A failed cycle is retried after 15 minutes (or the configured interval if shorter). It reuses the current model's tokenizer and architecture, initializes candidate weights from the current verified release, appends only the current cycle's training split to a persistent deduplicated replay corpus, and evaluates baseline and candidate on that cycle's fresh held-out validation split. No cycle's validation documents are ever added to gradient training. A candidate is promoted only when validation loss is no worse than the baseline. Promotion is content-addressed and atomic. The server loads the promoted model only after successful validation; failed acquisition, training, evaluation or activation leaves the current model active.
 
 The worker never trains on raw chat traffic or its own generated answers. User corrections remain on the separate explicit-consent and review workflow. This avoids silently harvesting conversations and reduces self-reinforcing synthetic-data errors.
 
@@ -65,4 +65,5 @@ Wikimedia's own documentation warns that license and attribution metadata can be
 - Every acquisition batch is split at document level. Only its training split is appended to the cumulative replay corpus; its fresh validation split is used for that cycle's paired baseline/candidate evaluation and is never used for gradient updates.
 - Page IDs and normalized document content are deduplicated across cycles to reduce validation contamination.
 - A rejected candidate never replaces the active model.
+- Failed acquisition/training cycles are retried after 15 minutes; successful cycles use the configured repeat interval.
 - The bootstrap model is deliberately small. Moving to the 1.5B configuration requires suitable compute and a separate measured scaling/training plan; the worker does not silently claim or fabricate a 1.5B model.
