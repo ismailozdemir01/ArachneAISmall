@@ -314,6 +314,34 @@ def _continued_config(base_artifact: Path, output_dir: Path) -> Config:
     return Config(model, training)
 
 
+
+def _atomic_copy_or_append(source: Path, destination: Path, *, append: bool) -> None:
+    """Atomically copy a new corpus file or append new documents without partial writes."""
+    import shutil
+    import tempfile
+
+    if source.is_symlink() or not source.is_file() or destination.is_symlink():
+        raise ValueError("Replay corpus files must be regular, non-symlink files.")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.exists() and not append:
+        raise FileExistsError(destination)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as output:
+            if append and destination.is_file():
+                with destination.open("rb") as existing:
+                    shutil.copyfileobj(existing, output, length=1024 * 1024)
+            with source.open("rb") as incoming:
+                shutil.copyfileobj(incoming, output, length=1024 * 1024)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+
 def run_self_taught_cycle(
     *,
     work_root: str | Path = "data/self_taught",
@@ -346,10 +374,24 @@ def run_self_taught_cycle(
         source="Wikimedia Wikipedia per-page REST metadata; see raw JSONL provenance",
         license_name="Mixed per-page CC BY-SA 3.0/4.0; exact page license and attribution are recorded per document.",
     )
-    train_jsonl = split_dir / "train.jsonl"
-    validation_jsonl = split_dir / "validation.jsonl"
+    split_train_jsonl = split_dir / "train.jsonl"
+    split_validation_jsonl = split_dir / "validation.jsonl"
+    replay_dir = work_root / "replay"
+    if replay_dir.is_symlink():
+        raise ValueError("Persistent replay directory cannot be a symbolic link.")
+    replay_dir.mkdir(parents=True, exist_ok=True)
+    train_jsonl = replay_dir / "train.jsonl"
+    validation_jsonl = replay_dir / "validation.jsonl"
+    replay_tokenizer = replay_dir / "tokenizer.model"
+    validation_tokens = replay_dir / "validation.bin"
     train_tokens = cycle / "train.bin"
-    validation_tokens = cycle / "validation.bin"
+    if train_jsonl.exists() != validation_jsonl.exists():
+        raise RuntimeError("Persistent replay corpus is incomplete; refusing to rebuild or overwrite it.")
+    if train_jsonl.exists():
+        _atomic_copy_or_append(raw_path, train_jsonl, append=True)
+    else:
+        _atomic_copy_or_append(split_train_jsonl, train_jsonl, append=False)
+        _atomic_copy_or_append(split_validation_jsonl, validation_jsonl, append=False)
 
     current_version = _read_release_version(release_root)
     base_artifact = release_root / current_version if current_version else None
@@ -383,15 +425,32 @@ def run_self_taught_cycle(
                     f"Insufficient free CUDA memory for safe self-taught fine-tuning: "
                     f"{free_memory:,} bytes available, approximately {required_memory:,} bytes required."
                 )
-        tokenizer_path = base_artifact / "tokenizer.model"
+        if replay_tokenizer.exists():
+            if sha256_file(replay_tokenizer) != sha256_file(base_artifact / "tokenizer.model"):
+                raise ValueError("Persistent replay tokenizer differs from the active model tokenizer.")
+        else:
+            _atomic_copy_or_append(base_artifact / "tokenizer.model", replay_tokenizer, append=False)
+        tokenizer_path = replay_tokenizer
     else:
-        tokenizer_prefix = cycle / "tokenizer" / "arachne"
-        tokenizer_text = cycle / "tokenizer-corpus.txt"
-        export_text(str(train_jsonl), str(tokenizer_text))
-        tokenizer_path = _write_tokenizer(tokenizer_text, tokenizer_prefix)
+        if replay_tokenizer.is_file():
+            tokenizer_path = replay_tokenizer
+        else:
+            tokenizer_prefix = cycle / "tokenizer" / "arachne"
+            tokenizer_text = cycle / "tokenizer-corpus.txt"
+            export_text(str(train_jsonl), str(tokenizer_text))
+            generated_tokenizer = _write_tokenizer(tokenizer_text, tokenizer_prefix)
+            _atomic_copy_or_append(generated_tokenizer, replay_tokenizer, append=False)
+            tokenizer_path = replay_tokenizer
     processor = spm.SentencePieceProcessor(model_file=str(tokenizer_path))
+    if validation_tokens.is_file():
+        validation_metadata = json.loads(
+            Path(str(validation_tokens) + ".json").read_text(encoding="utf-8")
+        )
+        if validation_metadata.get("tokenizer_sha256") != sha256_file(tokenizer_path):
+            raise ValueError("Persistent validation tokens do not match the replay tokenizer.")
+    else:
+        encode_jsonl(str(validation_jsonl), str(validation_tokens), str(tokenizer_path), "text", processor.eos_id())
     encode_jsonl(str(train_jsonl), str(train_tokens), str(tokenizer_path), "text", processor.eos_id())
-    encode_jsonl(str(validation_jsonl), str(validation_tokens), str(tokenizer_path), "text", processor.eos_id())
 
     candidate_dir = artifact_root / cycle_id
     config = (
