@@ -118,3 +118,54 @@ def test_wikimedia_rate_limit_exception_carries_bounded_cooldown():
     error = WikimediaRateLimited(3600)
     assert error.retry_after_seconds == 3600.0
     assert WikimediaRateLimited(999999).retry_after_seconds == 21600.0
+
+
+
+def test_acquisition_skips_rate_limited_language_and_uses_available_language(tmp_path, monkeypatch):
+    import json
+    import arachne_small.self_taught as self_taught
+
+    counts = {"en": 0}
+
+    def fake_fetch(language):
+        if language == "tr":
+            raise WikimediaRateLimited(120)
+        counts["en"] += 1
+        page_id = counts["en"]
+        return {
+            "text": f"<|language:en|>\nLicensed article {page_id} " + ("content " * 80),
+            "provenance": {"language": "en", "page_id": page_id},
+        }
+
+    monkeypatch.setattr(self_taught, "_fetch_page", fake_fetch)
+    monkeypatch.setattr(self_taught.time, "sleep", lambda _seconds: None)
+    output = tmp_path / "fallback.jsonl"
+    result = self_taught.acquire_wikipedia_corpus(
+        output, articles_per_language=20, request_delay_seconds=1.0,
+    )
+
+    assert result["records"] == 20
+    assert result["by_language"] == {"tr": 0, "en": 20}
+    records = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    assert all(record["provenance"]["language"] == "en" for record in records)
+
+
+def test_acquisition_preserves_rate_limit_when_all_languages_are_blocked(tmp_path, monkeypatch):
+    import arachne_small.self_taught as self_taught
+
+    monkeypatch.setattr(
+        self_taught, "_fetch_page",
+        lambda _language: (_ for _ in ()).throw(WikimediaRateLimited(300)),
+    )
+    monkeypatch.setattr(self_taught.time, "sleep", lambda _seconds: None)
+    output = tmp_path / "blocked.jsonl"
+
+    try:
+        self_taught.acquire_wikipedia_corpus(
+            output, articles_per_language=20, request_delay_seconds=1.0,
+        )
+    except WikimediaRateLimited as exc:
+        assert exc.retry_after_seconds == 300.0
+    else:
+        raise AssertionError("Rate limiting from all sources must stop training.")
+    assert not output.exists()
