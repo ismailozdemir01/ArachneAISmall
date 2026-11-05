@@ -309,6 +309,19 @@ def run_self_taught_cycle(
 
     current_version = _read_release_version(release_root)
     base_artifact = release_root / current_version if current_version else None
+    if base_artifact is None:
+        configured_base = os.environ.get("ARACHNE_SMALL_ARTIFACT", "").strip()
+        if configured_base:
+            configured_path = Path(configured_base).expanduser()
+            if configured_path.is_dir() and (configured_path / "artifact-manifest.json").is_file():
+                base_artifact = configured_path
+        if base_artifact is None:
+            from .artifacts import discover_model_artifact
+            discovered = discover_model_artifact("artifacts")
+            if discovered is not None:
+                discovered_path = Path(discovered[2])
+                if discovered_path.is_dir() and (discovered_path / "artifact-manifest.json").is_file():
+                    base_artifact = discovered_path
     if base_artifact is not None:
         verify_artifact(base_artifact)
         tokenizer_path = base_artifact / "tokenizer.model"
