@@ -49,6 +49,14 @@ class Runtime:
                 self.load_error = f"{type(exc).__name__}: {exc}"
                 raise
 
+    def activate(self, artifact_dir: str) -> None:
+        """Load a candidate off-lock and atomically swap only after successful validation."""
+        path = Path(artifact_dir).expanduser().resolve()
+        model, tokenizer = load_model(path, self.device)
+        with self.lock:
+            self.model, self.tokenizer, self.artifact_dir = model, tokenizer, path
+            self.load_error = None
+
     def status(self) -> dict:
         with self.lock:
             ready = self.model is not None and self.tokenizer is not None
@@ -306,7 +314,7 @@ async def _self_taught_loop() -> None:
             )
             version = _read_release_version(Path(os.environ.get("ARACHNE_SMALL_RELEASE_DIR", "artifacts/releases")))
             if result.get("promoted") and version:
-                await asyncio.to_thread(runtime.load, str(Path(os.environ.get("ARACHNE_SMALL_RELEASE_DIR", "artifacts/releases")) / version))
+                await asyncio.to_thread(runtime.activate, str(Path(os.environ.get("ARACHNE_SMALL_RELEASE_DIR", "artifacts/releases")) / version))
                 LOGGER.info("Self-taught cycle %s promoted and activated model release %s (%s parameters).",
                             result["cycle_id"], version, result["parameter_count"])
             else:
