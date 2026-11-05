@@ -5,6 +5,7 @@ import hmac
 import logging
 import os
 import threading
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
@@ -17,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from . import __version__
 from .artifacts import load_model
-from .learning import FeedbackStore
+from .learning import FeedbackStore, run_learning_cycle, _read_release_version
 from .modules import ModuleRegistry, ModuleRejected
 
 LOGGER = logging.getLogger("arachne_small.server")
@@ -200,6 +201,61 @@ async def _module_discovery_loop(registry_urls: list[str]) -> None:
         await asyncio.sleep(interval)
 
 
+async def _automatic_learning_loop() -> None:
+    try:
+        interval = int(os.environ.get("ARACHNE_SMALL_LEARN_INTERVAL", "21600"))
+        min_rating = int(os.environ.get("ARACHNE_SMALL_LEARN_MIN_RATING", "4"))
+        max_loss_regression = float(os.environ.get("ARACHNE_SMALL_MAX_LOSS_REGRESSION", "0"))
+        batch_size = int(os.environ.get("ARACHNE_SMALL_EVAL_BATCH_SIZE", "1"))
+        max_batches = int(os.environ.get("ARACHNE_SMALL_EVAL_MAX_BATCHES", "200"))
+    except ValueError:
+        LOGGER.exception("Invalid automatic-learning configuration; worker is disabled.")
+        return
+    interval = max(1800, min(interval, 604800))
+    if not 1 <= min_rating <= 5 or max_loss_regression < 0 or batch_size < 1 or max_batches < 1:
+        LOGGER.error("Automatic-learning limits are invalid; worker is disabled.")
+        return
+
+    base_artifact = os.environ.get("ARACHNE_SMALL_ARTIFACT")
+    training_config = os.environ.get("ARACHNE_SMALL_TRAINING_CONFIG")
+    validation_tokens = os.environ.get("ARACHNE_SMALL_VALIDATION_TOKENS")
+    if not base_artifact or not training_config or not validation_tokens:
+        LOGGER.error("Automatic learning requires ARACHNE_SMALL_ARTIFACT, ARACHNE_SMALL_TRAINING_CONFIG and ARACHNE_SMALL_VALIDATION_TOKENS.")
+        return
+
+    database = os.environ.get("ARACHNE_SMALL_FEEDBACK_DB", "data/feedback.sqlite3")
+    release_dir = Path(os.environ.get("ARACHNE_SMALL_RELEASE_DIR", "artifacts/releases"))
+    work_root = Path(os.environ.get("ARACHNE_SMALL_LEARN_WORK_DIR", "artifacts/learning-work"))
+    work_root.mkdir(parents=True, exist_ok=True)
+    while True:
+        try:
+            current = await asyncio.to_thread(_read_release_version, release_dir)
+            cycle_base = release_dir / current if current else Path(base_artifact)
+            result = await asyncio.to_thread(
+                run_learning_cycle,
+                database=database,
+                base_artifact=cycle_base,
+                config_path=training_config,
+                validation_tokens=validation_tokens,
+                work_dir=work_root / uuid.uuid4().hex,
+                release_dir=release_dir,
+                min_rating=min_rating,
+                max_loss_regression=max_loss_regression,
+                batch_size=batch_size,
+                max_batches=max_batches,
+            )
+            LOGGER.info("Automatic learning cycle promoted release %s from %d feedback records.",
+                        result["release"]["version"], result["feedback_records"])
+        except RuntimeError as exc:
+            if "No new consented feedback" in str(exc):
+                LOGGER.debug("Automatic learning skipped: no new reviewed feedback.")
+            else:
+                LOGGER.exception("Automatic learning cycle failed.")
+        except Exception:
+            LOGGER.exception("Automatic learning cycle failed; current release remains unchanged.")
+        await asyncio.sleep(interval)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if os.environ.get("ARACHNE_SMALL_ALLOW_REMOTE") == "1":
@@ -216,17 +272,21 @@ async def lifespan(app: FastAPI):
     raw_registries = os.environ.get("ARACHNE_SMALL_MODULE_REGISTRIES", "")
     registry_urls = [item.strip() for item in raw_registries.split(";") if item.strip()]
     discovery_task = None
+    learning_task = None
     if registry_urls:
         discovery_task = asyncio.create_task(_module_discovery_loop(registry_urls))
+    if os.environ.get("ARACHNE_SMALL_AUTO_LEARN") == "1":
+        learning_task = asyncio.create_task(_automatic_learning_loop())
     try:
         yield
     finally:
-        if discovery_task is not None:
-            discovery_task.cancel()
-            try:
-                await discovery_task
-            except asyncio.CancelledError:
-                pass
+        for task in (discovery_task, learning_task):
+            if task is not None:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
 
 app = FastAPI(
