@@ -129,7 +129,7 @@ def load_model(artifact_dir: str | Path, device: str | torch.device = "cpu") -> 
     requested = Path(artifact_dir).expanduser()
     if requested.is_symlink():
         raise ValueError("Model artifact path cannot be a symbolic link.")
-    if requested.is_dir() and (requested / "arachne_small.pt").is_file():
+    if requested.is_dir() and not (requested / "artifact-manifest.json").is_file() and (requested / "arachne_small.pt").is_file():
         requested = requested / "arachne_small.pt"
     if requested.is_file() and requested.suffix.lower() == ".pt":
         if requested.is_symlink():
