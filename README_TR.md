@@ -3,15 +3,15 @@
 **ArachneAISmall, ArachneAI ekosistemi içinde sıfırdan Türkçe–İngilizce dil modeli geliştirme ve eğitim projesidir.** Veri yönetişimi, tokenizer eğitimi, decoder-only Transformer eğitimi, doğrulanabilir model paketleri, yerel çıkarım, açık rızaya dayalı geri bildirim, kontrollü sürekli öğrenme ve güvenlik sınırları belirlenmiş bildirimsel modül sistemini tek bir geliştirme hattında birleştirir.
 
 - **Hedef diller:** Türkçe ve İngilizce
-- **Hedef mimari ölçeği:** 1.5B sınıfı
+- **Hedef mimari ölçeği:** 1.5B sınıfı; otomatik ilk kurulum modeli yaklaşık 1.8M parametreli bootstrap yapılandırmasıdır
 - **Yapılandırılmış parametre sayısı:** 1.523.714.048
 - **Başlatma:** Rastgele başlangıç ağırlıkları; temel model olarak üçüncü taraf önceden eğitilmiş ağırlık kullanılmaz
-- **Artifact biçimi:** SafeTensors çıkarım ağırlıkları içeren Arachne Small v1
-- **Mevcut yayın durumu:** Eğitim ve çalışma zamanı yazılımı depoda; eğitilmiş model ağırlıkları ve eğitim korpusu yayımlanmış değil
+- **Artifact biçimi:** SafeTensors çıkarım artifact'i ve weights-only `arachne_small.pt` PyTorch checkpoint'i
+- **Mevcut yayın durumu:** Eğitim ve çalışma zamanı yazılımı depoda; ilk gerçek self-taught eğitimi yerel sunucu başlatıldığında otomatik yürütülür, yerel ağırlıklar Git'e gönderilmez
 
 [🇬🇧 English README](README.md) · [Kurulum ve çalıştırma kılavuzu](KURULUM.md)
 
-> **Model durumu hakkında önemli not:** 1.5B yapılandırması hedef mimariyi tanımlar; 1.5B modelin eğitildiği veya yayımlandığı anlamına gelmez. Doğrulanmış eğitilmiş artifact sağlanana kadar API ve web arayüzü başlatılabilir ancak metin üretimi kullanılamaz ve HTTP 503 döndürür. Uygulama çıkarım sırasında rastgele ağırlıklarla veya sahte yanıtlarla çalışmaz.
+> **Self-taught çalışma şekli:** `arachne-small serve` arka planda Türkçe ve İngilizce Wikipedia sayfalarını sayfa bazında lisans kontrolüyle toplar, tokenizer/modeli sıfırdan eğitir ve `arachne_small.pt` üretir. İlk model küçük bir bootstrap modelidir; 1.5B değildir. Eğitim ve doğrulama tamamlanmadan model hazır sayılmaz. Süreç ve sınırlar için [Self-Taught](docs/SELF_TAUGHT.md) belgesine bakın.
 
 ---
 
@@ -472,3 +472,16 @@ Depo şu anda yazılım ve doğrulama hattını içerir; yayımlanmış eğitilm
 ## Lisans
 
 Kaynak kodu [Apache License 2.0](LICENSE) ile lisanslanmıştır. Depo kodunun lisansı; harici veri kümelerini, üçüncü taraf varlıkları veya gelecekte yayımlanacak eğitilmiş model ağırlıklarını kendiliğinden kapsamaz. Bu materyaller için ayrıca geçerli lisans ve kullanım koşulları gerekir.
+
+
+## Otomatik Self-Taught Öğrenme
+
+`arachne-small serve` başlatıldığında self-taught işçisi varsayılan olarak arka planda çalışır. Türkçe ve İngilizce Wikipedia REST API'lerinden sayfa bazında lisansı doğrulanabilen CC BY-SA 3.0/4.0 metinleri toplar; sayfa ve revision atıflarını korur; veri kümesini ayırır; tokenizer'ı eğitir; ilk küçük Transformer modelini sıfırdan eğiterek `arachne_small.pt` oluşturur. Sonraki döngülerde yeni verilerle aday model eğitir, baseline ile aynı doğrulama kümesinde karşılaştırır ve yalnızca kayıp değeri gerilemeyen adayı etkinleştirir.
+
+- İlk bootstrap yaklaşık 1.8M parametredir; 1.5B hedef model değildir.
+- Varsayılan döngü aralığı 6 saattir.
+- Ham sohbetler ve modelin kendi ürettiği yanıtlar otomatik eğitim verisi yapılmaz.
+- `GET /api/status` self-taught durumunu gösterir.
+- Yerel korpus ve model ağırlıkları Git'e eklenmez.
+
+Ayrıntılar: [docs/SELF_TAUGHT.md](docs/SELF_TAUGHT.md).
