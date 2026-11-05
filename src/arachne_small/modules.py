@@ -175,11 +175,13 @@ class ModuleRegistry:
         self.root = requested.resolve()
         self.candidates = self.root / "candidates"
         self.active = self.root / "active"
+        self.rejections = self.root / "discovery-rejections.jsonl"
         self.root.mkdir(parents=True, exist_ok=True)
         self.candidates.mkdir(exist_ok=True)
         self.active.mkdir(exist_ok=True)
-        if self.candidates.is_symlink() or self.active.is_symlink():
-            raise ModuleRejected("Module registry directories cannot be symbolic links.")
+        if (self.candidates.is_symlink() or self.active.is_symlink()
+                or self.rejections.is_symlink()):
+            raise ModuleRejected("Module registry paths cannot be symbolic links.")
 
     def create_candidate(self, spec: dict[str, Any], *, source: str = "self-generated",
                          source_sha256: str | None = None) -> dict[str, Any]:
@@ -221,44 +223,83 @@ class ModuleRegistry:
                 "sha256": digest, "state": "verified_candidate",
                 "tests_passed": len(module["tests"]), "source": source}
 
+    def _record_rejection(self, registry_url: str, source_url: str, reason: str) -> None:
+        if self.rejections.is_symlink():
+            raise ModuleRejected("Discovery rejection log cannot be a symbolic link.")
+        record = _json_bytes({
+            "registry": str(registry_url)[:2048],
+            "source": str(source_url)[:2048],
+            "reason": str(reason)[:1000],
+        })
+        flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        descriptor = os.open(self.rejections, flags, 0o600)
+        try:
+            view = memoryview(record)
+            while view:
+                written = os.write(descriptor, view)
+                if written <= 0:
+                    raise OSError("Could not persist discovery rejection record.")
+                view = view[written:]
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
     def discover(self, registry_urls: list[str]) -> list[dict[str, Any]]:
         if not isinstance(registry_urls, list) or len(registry_urls) > 20:
             raise ValueError("Provide at most 20 trusted registry URLs.")
         discovered = []
         total_entries = 0
         for registry_url in registry_urls:
-            raw_index = _fetch_json(registry_url, _MAX_REGISTRY_BYTES)
             try:
+                raw_index = _fetch_json(registry_url, _MAX_REGISTRY_BYTES)
                 index = json.loads(raw_index)
-            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                raise ModuleRejected(f"Invalid registry JSON at {registry_url}.") from exc
-            if not isinstance(index, dict) or set(index) != {"format", "modules"} or index["format"] != "arachne-module-index-v1":
-                raise ModuleRejected(f"Unsupported module index format: {registry_url}")
-            entries = index["modules"]
-            if not isinstance(entries, list) or len(entries) > 100:
-                raise ModuleRejected("A registry index must contain at most 100 module entries.")
-            total_entries += len(entries)
-            if total_entries > 100:
-                raise ModuleRejected("A discovery cycle may process at most 100 modules across all registries.")
+                if (not isinstance(index, dict) or set(index) != {"format", "modules"}
+                        or index["format"] != "arachne-module-index-v1"):
+                    raise ModuleRejected(f"Unsupported module index format: {registry_url}")
+                entries = index["modules"]
+                if not isinstance(entries, list) or len(entries) > 100:
+                    raise ModuleRejected("A registry index must contain at most 100 module entries.")
+                total_entries += len(entries)
+                if total_entries > 100:
+                    raise ModuleRejected(
+                        "A discovery cycle may process at most 100 modules across all registries."
+                    )
+            except (ModuleRejected, OSError, ValueError, TypeError) as exc:
+                self._record_rejection(registry_url, "", str(exc))
+                continue
+
             for entry in entries:
-                if not isinstance(entry, dict) or set(entry) != {"url", "sha256"}:
-                    raise ModuleRejected("Registry entries must contain only url and sha256.")
-                source_url = _safe_url(entry["url"])
-                expected_hash = entry["sha256"]
-                if not isinstance(expected_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_hash):
-                    raise ModuleRejected("Registry entry has an invalid SHA-256.")
-                raw_module = _fetch_json(source_url, _MAX_DOCUMENT_BYTES)
-                actual_hash = hashlib.sha256(raw_module).hexdigest()
-                if actual_hash != expected_hash:
-                    raise ModuleRejected(f"Module source digest mismatch: {source_url}")
+                source_url = ""
+                candidate_digest = None
                 try:
+                    if not isinstance(entry, dict) or set(entry) != {"url", "sha256"}:
+                        raise ModuleRejected("Registry entries must contain only url and sha256.")
+                    source_url = _safe_url(entry["url"])
+                    expected_hash = entry["sha256"]
+                    if not isinstance(expected_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_hash):
+                        raise ModuleRejected("Registry entry has an invalid SHA-256.")
+                    raw_module = _fetch_json(source_url, _MAX_DOCUMENT_BYTES)
+                    actual_hash = hashlib.sha256(raw_module).hexdigest()
+                    if actual_hash != expected_hash:
+                        raise ModuleRejected(f"Module source digest mismatch: {source_url}")
                     spec = json.loads(raw_module)
-                except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                    raise ModuleRejected(f"Invalid module JSON: {source_url}") from exc
-                candidate = self.create_candidate(
-                    spec, source=source_url, source_sha256=actual_hash
-                )
-                discovered.append(self.activate(candidate["sha256"]))
+                    candidate = self.create_candidate(
+                        spec, source=source_url, source_sha256=actual_hash
+                    )
+                    candidate_digest = candidate["sha256"]
+                    discovered.append(self.activate(candidate_digest))
+                except (ModuleRejected, OSError, ValueError, TypeError) as exc:
+                    if candidate_digest is not None:
+                        candidate_path = self.candidates / f"{candidate_digest}.json"
+                        if candidate_path.is_symlink():
+                            raise ModuleRejected(
+                                "Rejected candidate path became a symbolic link."
+                            ) from exc
+                        candidate_path.unlink(missing_ok=True)
+                    self._record_rejection(registry_url, source_url, str(exc))
+                    continue
         return discovered
 
     def activate(self, digest: str) -> dict[str, Any]:
