@@ -156,8 +156,12 @@ def load_model(artifact_dir: str | Path, device: str | torch.device = "cpu") -> 
             tensor = state[name]
             if not isinstance(tensor, torch.Tensor) or tuple(tensor.shape) != shape:
                 raise ValueError(f"PyTorch checkpoint tensor shape mismatch: {name}")
-            if not tensor.is_floating_point() or not torch.isfinite(tensor).all():
-                raise ValueError(f"PyTorch checkpoint contains invalid weights: {name}")
+            if not tensor.is_floating_point():
+                raise ValueError(f"PyTorch checkpoint contains non-floating weights: {name}")
+            flat = tensor.reshape(-1)
+            for chunk in flat.split(1_048_576):
+                if not torch.isfinite(chunk).all().item():
+                    raise ValueError(f"PyTorch checkpoint contains non-finite weights: {name}")
         tokenizer_hash = checkpoint.get("tokenizer_sha256")
         if not isinstance(tokenizer_hash, str) or sha256_file(tokenizer_path) != tokenizer_hash:
             raise ValueError("PyTorch checkpoint tokenizer checksum does not match tokenizer.model.")
@@ -165,7 +169,8 @@ def load_model(artifact_dir: str | Path, device: str | torch.device = "cpu") -> 
         if tokenizer.vocab_size() != model_config.vocab_size:
             raise ValueError("PyTorch checkpoint tokenizer vocabulary does not match model configuration.")
         model = ArachneSmall(model_config)
-        model.load_state_dict(state, strict=True)
+        model.load_state_dict(state, strict=True, assign=True)
+        del state, checkpoint
         model.to(device)
         model.eval()
         return model, tokenizer
