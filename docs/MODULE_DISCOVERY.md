@@ -33,7 +33,7 @@ An index has this format:
   "format": "arachne-module-index-v1",
   "modules": [
     {
-      "url": "https://raw.githubusercontent.com/OWNER/REPO/COMMIT/modules/example.json",
+      "url": "https://raw.githubusercontent.com/OWNER/REPO/0123456789abcdef0123456789abcdef01234567/modules/example.json",
       "sha256": "64-character-lowercase-hex-digest"
     }
   ]
@@ -46,10 +46,11 @@ When `ARACHNE_SMALL_MODULE_REGISTRIES` contains semicolon-separated trusted inde
 
 ## Self-generation and API
 
-Arachne's planner/model can submit a declarative module specification to `POST /api/modules/create`. The server validates it, executes its test vectors using the restricted interpreter, and activates it only when every gate passes. This endpoint is protected by the same Bearer-token middleware as inference and feedback when an API token is configured.
+A trained Arachne model can propose a declarative module from a natural-language goal through `POST /api/modules/plan`. The generated response must be strict JSON and pass the same schema and deterministic behavior gates before activation. Operators or an external planner can submit a prebuilt manifest to `POST /api/modules/create`. Both endpoints are protected by the same Bearer-token middleware as inference and feedback when an API token is configured. Since the 1.5B model has not yet been trained, autonomous model-driven planning remains unavailable until a verified trained artifact is loaded.
 
 - `GET /api/modules`: list active modules
-- `POST /api/modules/create`: validate and activate a self-generated module
+- `POST /api/modules/plan`: ask the loaded model to propose, test and activate a declarative module
+- `POST /api/modules/create`: validate and activate a supplied declarative module
 - `POST /api/modules/discover`: discover from explicitly supplied trusted indexes
 - `POST /api/modules/{module_id}/run`: execute one active module
 
