@@ -1,7 +1,7 @@
 import hashlib
 import json
 
-from arachne_small.modules import ModuleRegistry
+from arachne_small.modules import ModuleRegistry, ModuleRejected
 import arachne_small.modules as backend
 
 
