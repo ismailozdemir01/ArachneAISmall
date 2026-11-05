@@ -195,15 +195,25 @@ class FeedbackStore:
         temporary_created = False
         try:
             with self._connect() as db:
+                rows = db.execute(
+                    "SELECT id,prompt,correction,language,content_sha256 "
+                    "FROM feedback WHERE reviewed=1 AND approved=1 AND exported=0 "
+                    "AND consent=1 AND rating>=? ORDER BY id",
+                    (min_rating,),
+                ).fetchall()
+                if not rows:
+                    return {
+                        "format": "arachne-small-feedback-export",
+                        "format_version": 1,
+                        "records": 0,
+                        "minimum_rating": min_rating,
+                        "record_hashes": [],
+                        "export_sha256": None,
+                        "created_at": int(time.time()),
+                    }
                 output_handle = self._open_private_temp(temporary)
                 temporary_created = True
                 with output_handle as output:
-                    rows = db.execute(
-                        "SELECT id,prompt,correction,language,content_sha256 "
-                        "FROM feedback WHERE reviewed=1 AND approved=1 AND exported=0 "
-                        "AND consent=1 AND rating>=? ORDER BY id",
-                        (min_rating,),
-                    )
                     for row in rows:
                         # Corrections are preferred targets; the original answer is not treated as ground truth.
                         record = {
