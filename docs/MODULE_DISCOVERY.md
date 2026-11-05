@@ -62,6 +62,21 @@ CLI equivalents:
 
 Set `ARACHNE_SMALL_MODULE_DIR` to choose the module registry directory. The default is `data/modules`.
 
+## Automatic reviewed-feedback training
+
+The server can run the existing feedback fine-tuning/evaluation/release pipeline periodically. It is opt-in and requires a trained base artifact plus an exact training config and validation token stream:
+
+- `ARACHNE_SMALL_AUTO_LEARN=1`
+- `ARACHNE_SMALL_ARTIFACT=/path/to/verified/base-artifact`
+- `ARACHNE_SMALL_TRAINING_CONFIG=/path/to/training.yaml`
+- `ARACHNE_SMALL_VALIDATION_TOKENS=/path/to/validation.bin`
+- Optional: `ARACHNE_SMALL_FEEDBACK_DB`, `ARACHNE_SMALL_RELEASE_DIR`, `ARACHNE_SMALL_LEARN_WORK_DIR`
+- Optional controls: `ARACHNE_SMALL_LEARN_INTERVAL` (default 21600 seconds, clamped to 1800-604800), `ARACHNE_SMALL_LEARN_MIN_RATING` (default 4), `ARACHNE_SMALL_MAX_LOSS_REGRESSION` (default 0), `ARACHNE_SMALL_EVAL_BATCH_SIZE` (default 1), `ARACHNE_SMALL_EVAL_MAX_BATCHES` (default 200)
+
+Only explicitly consented, reviewed and approved feedback is eligible. Each cycle uses a fresh work directory, starts from the latest verified release when one exists, evaluates against the same fixed validation stream, and promotes only when the configured loss gate passes. Failed cycles leave the active release pointer unchanged. The currently loaded inference process is not hot-swapped; restart the service to load a newly promoted artifact.
+
+Automatic training is not started unless `ARACHNE_SMALL_AUTO_LEARN=1`. It cannot train the 1.5B model until a trained base artifact, suitable compute, training configuration and validation corpus are supplied.
+
 ## Current model limitation
 
 The 1.5B parameter configuration is an architecture target, not a trained model. The module lifecycle can validate and activate constrained modules independently, but autonomous semantic module planning by the Arachne language model requires a trained model artifact and an explicitly enabled planner. Passing deterministic module tests does not establish broad semantic correctness.
