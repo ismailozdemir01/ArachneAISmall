@@ -307,6 +307,7 @@ async def _self_taught_loop() -> None:
     from .self_taught import run_self_taught_cycle
     SELF_TAUGHT_STATUS.update({"enabled": True, "state": "acquiring_and_training", "last_error": None})
     while True:
+        next_delay = interval
         try:
             SELF_TAUGHT_STATUS.update({"state": "acquiring_and_training", "last_error": None})
             result = await asyncio.to_thread(
@@ -330,7 +331,8 @@ async def _self_taught_loop() -> None:
         except Exception as exc:
             SELF_TAUGHT_STATUS.update({"state": "error_retry_scheduled", "last_error": f"{type(exc).__name__}: {exc}"})
             LOGGER.exception("Self-taught cycle failed; the active model remains unchanged.")
-        await asyncio.sleep(interval)
+            next_delay = min(interval, 900)
+        await asyncio.sleep(next_delay)
 
 
 @asynccontextmanager
