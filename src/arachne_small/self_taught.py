@@ -236,6 +236,7 @@ def acquire_wikipedia_corpus(
         database.execute("CREATE TABLE IF NOT EXISTS seen_content (content_sha256 TEXT PRIMARY KEY)")
         database.execute("BEGIN IMMEDIATE")
     records = 0
+    rate_limits: dict[str, WikimediaRateLimited] = {}
     try:
         with target.open("x", encoding="utf-8", newline="\n") as output:
             for language in WIKIPEDIA_LANGUAGES:
@@ -275,17 +276,23 @@ def acquire_wikipedia_corpus(
                                 output.flush()
                                 counts[language] += 1
                                 records += 1
-                    except WikimediaRateLimited:
-                        # A 429 is a source-wide throttle signal, not a bad random page.
-                        # Abort this cycle immediately and let the worker honor Retry-After.
-                        raise
+                    except WikimediaRateLimited as exc:
+                        # Throttle only the affected language and try the next allowlisted source.
+                        rate_limits[language] = exc
+                        LOGGER.warning(
+                            "Wikimedia %s is rate-limited; skipping this language for the current cycle.",
+                            language,
+                        )
+                        break
                     except (OSError, ValueError, KeyError, TypeError, AttributeError, urllib.error.URLError) as exc:
                         LOGGER.warning("Wikimedia %s acquisition attempt %d failed: %s", language, attempts, exc)
                     time.sleep(float(request_delay_seconds))
-        if min(counts.values()) < 20:
+        if records < articles_per_language:
+            if rate_limits:
+                raise max(rate_limits.values(), key=lambda error: error.retry_after_seconds)
             raise RuntimeError(
                 f"Insufficient licensed documents were acquired: {counts}. "
-                "No training cycle was started."
+                f"At least {articles_per_language} documents are required to start training."
             )
         if database is not None:
             database.commit()
@@ -392,6 +399,30 @@ def _atomic_copy_or_append(source: Path, destination: Path, *, append: bool) -> 
         os.replace(temporary, destination)
     finally:
         temporary.unlink(missing_ok=True)
+
+def _atomic_publish_checkpoint(source: Path, destination: Path) -> None:
+    """Atomically publish the latest promoted checkpoint at the documented stable path."""
+    import shutil
+    import tempfile
+
+    if source.is_symlink() or not source.is_file() or destination.is_symlink():
+        raise ValueError("Published model checkpoint must be a regular non-symlink file.")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as output, source.open("rb") as incoming:
+            shutil.copyfileobj(incoming, output, length=1024 * 1024)
+            output.flush()
+            os.fsync(output.fileno())
+        if destination.is_symlink():
+            raise ValueError("Published model checkpoint destination became a symbolic link.")
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+
 
 def run_self_taught_cycle(
     *,
@@ -543,4 +574,10 @@ def run_self_taught_cycle(
         os.replace(temporary, pointer)
         result["promotion"] = {"version": version, "artifact": str(destination), "bootstrap": True}
         result["promoted"] = True
+    published_checkpoint = artifact_root / "arachne_small.pt"
+    _atomic_publish_checkpoint(
+        Path(result["promotion"]["artifact"]) / "arachne_small.pt",
+        published_checkpoint,
+    )
+    result["checkpoint_path"] = str(published_checkpoint)
     return result
