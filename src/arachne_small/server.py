@@ -282,6 +282,43 @@ async def _automatic_learning_loop() -> None:
         await asyncio.sleep(interval)
 
 
+async def _self_taught_loop() -> None:
+    """Continuously acquire licensed material, train, evaluate and safely promote models."""
+    try:
+        interval = int(os.environ.get("ARACHNE_SMALL_SELF_TAUGHT_INTERVAL", "21600"))
+        articles = int(os.environ.get("ARACHNE_SMALL_SELF_TAUGHT_ARTICLES_PER_LANGUAGE", "40"))
+    except ValueError:
+        LOGGER.exception("Invalid self-taught configuration; worker is disabled.")
+        return
+    interval = max(1800, min(interval, 604800))
+    if not 10 <= articles <= 500:
+        LOGGER.error("Self-taught article limit must be between 10 and 500; worker is disabled.")
+        return
+    from .self_taught import run_self_taught_cycle
+    while True:
+        try:
+            result = await asyncio.to_thread(
+                run_self_taught_cycle,
+                work_root=os.environ.get("ARACHNE_SMALL_SELF_TAUGHT_DATA", "data/self_taught"),
+                artifact_root=os.environ.get("ARACHNE_SMALL_SELF_TAUGHT_ARTIFACTS", "artifacts/self_taught"),
+                release_root=os.environ.get("ARACHNE_SMALL_RELEASE_DIR", "artifacts/releases"),
+                articles_per_language=articles,
+            )
+            version = _read_release_version(Path(os.environ.get("ARACHNE_SMALL_RELEASE_DIR", "artifacts/releases")))
+            if result.get("promoted") and version:
+                await asyncio.to_thread(runtime.load, str(Path(os.environ.get("ARACHNE_SMALL_RELEASE_DIR", "artifacts/releases")) / version))
+                LOGGER.info("Self-taught cycle %s promoted and activated model release %s (%s parameters).",
+                            result["cycle_id"], version, result["parameter_count"])
+            else:
+                LOGGER.info("Self-taught cycle %s completed without promotion; active model is unchanged.",
+                            result["cycle_id"])
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            LOGGER.exception("Self-taught cycle failed; the active model remains unchanged.")
+        await asyncio.sleep(interval)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if os.environ.get("ARACHNE_SMALL_ALLOW_REMOTE") == "1":
@@ -313,14 +350,17 @@ async def lifespan(app: FastAPI):
     registry_urls = [item.strip() for item in raw_registries.split(";") if item.strip()]
     discovery_task = None
     learning_task = None
+    self_taught_task = None
     if registry_urls:
         discovery_task = asyncio.create_task(_module_discovery_loop(registry_urls))
     if os.environ.get("ARACHNE_SMALL_AUTO_LEARN") == "1":
         learning_task = asyncio.create_task(_automatic_learning_loop())
+    if os.environ.get("ARACHNE_SMALL_SELF_TAUGHT") == "1":
+        self_taught_task = asyncio.create_task(_self_taught_loop())
     try:
         yield
     finally:
-        for task in (discovery_task, learning_task):
+        for task in (discovery_task, learning_task, self_taught_task):
             if task is not None:
                 task.cancel()
                 try:
@@ -509,6 +549,7 @@ def generate(payload: GenerateRequest, request: Request) -> dict:
 
 def main() -> None:
     import uvicorn
+    os.environ.setdefault("ARACHNE_SMALL_SELF_TAUGHT", "1")
     host = os.environ.get("ARACHNE_SMALL_HOST", "127.0.0.1")
     port = int(os.environ.get("ARACHNE_SMALL_PORT", "8000"))
     remote_mode = host not in {"127.0.0.1", "localhost", "::1"}
