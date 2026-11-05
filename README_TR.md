@@ -468,6 +468,7 @@ Depo şu anda yazılım ve doğrulama hattını içerir; yayımlanmış eğitilm
 - [Artifact Biçimi](docs/ARTIFACT_FORMAT.md)
 - [Inference API](docs/INFERENCE_API.md)
 - [Kontrollü Sürekli Öğrenme](docs/CONTINUAL_LEARNING.md)
+- [Otomatik Self-Taught Öğrenme](docs/SELF_TAUGHT.md)
 
 ## Lisans
 
