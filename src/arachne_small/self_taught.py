@@ -36,10 +36,10 @@ _MIN_DOCUMENT_CHARS = 350
 _MAX_DOCUMENT_CHARS = 24000
 _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 _CONTACT_OR_SECRET = re.compile(
-    r"(?:[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}|"
+    r"(?:[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|"
     r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|"
-    r"\\bAKIA[0-9A-Z]{16}\\b|"
-    r"\\bgh[pousr]_[A-Za-z0-9]{20,}\\b)",
+    r"\bAKIA[0-9A-Z]{16}\b|"
+    r"\bgh[pousr]_[A-Za-z0-9]{20,}\b)",
     re.IGNORECASE,
 )
 
