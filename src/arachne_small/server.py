@@ -23,6 +23,7 @@ from .learning import FeedbackStore, run_learning_cycle, _read_release_version
 from .modules import ModuleRegistry, ModuleRejected
 
 LOGGER = logging.getLogger("arachne_small.server")
+SELF_TAUGHT_STATUS = {"enabled": False, "state": "disabled", "last_cycle": None, "last_error": None}
 FRONTEND_DIR = Path(__file__).with_name("frontend")
 MAX_PROMPT_CHARS = 20_000
 
@@ -72,6 +73,7 @@ class Runtime:
                     os.environ.get("ARACHNE_SMALL_ALLOW_REMOTE") == "1"
                     or bool(os.environ.get("ARACHNE_SMALL_API_TOKEN", "").strip())
                 ),
+                "self_taught": dict(SELF_TAUGHT_STATUS),
             }
             if ready:
                 result.update({
@@ -303,8 +305,10 @@ async def _self_taught_loop() -> None:
         LOGGER.error("Self-taught article limit must be between 10 and 500; worker is disabled.")
         return
     from .self_taught import run_self_taught_cycle
+    SELF_TAUGHT_STATUS.update({"enabled": True, "state": "acquiring_and_training", "last_error": None})
     while True:
         try:
+            SELF_TAUGHT_STATUS.update({"state": "acquiring_and_training", "last_error": None})
             result = await asyncio.to_thread(
                 run_self_taught_cycle,
                 work_root=os.environ.get("ARACHNE_SMALL_SELF_TAUGHT_DATA", "data/self_taught"),
@@ -315,6 +319,7 @@ async def _self_taught_loop() -> None:
             version = _read_release_version(Path(os.environ.get("ARACHNE_SMALL_RELEASE_DIR", "artifacts/releases")))
             if result.get("promoted") and version:
                 await asyncio.to_thread(runtime.activate, str(Path(os.environ.get("ARACHNE_SMALL_RELEASE_DIR", "artifacts/releases")) / version))
+                SELF_TAUGHT_STATUS.update({"state": "waiting_for_next_cycle", "last_cycle": result["cycle_id"], "last_error": None})
                 LOGGER.info("Self-taught cycle %s promoted and activated model release %s (%s parameters).",
                             result["cycle_id"], version, result["parameter_count"])
             else:
@@ -322,7 +327,8 @@ async def _self_taught_loop() -> None:
                             result["cycle_id"])
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception as exc:
+            SELF_TAUGHT_STATUS.update({"state": "error_retry_scheduled", "last_error": f"{type(exc).__name__}: {exc}"})
             LOGGER.exception("Self-taught cycle failed; the active model remains unchanged.")
         await asyncio.sleep(interval)
 
@@ -368,6 +374,8 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        if self_taught_task is not None:
+            SELF_TAUGHT_STATUS.update({"enabled": False, "state": "stopped"})
         for task in (discovery_task, learning_task, self_taught_task):
             if task is not None:
                 task.cancel()
