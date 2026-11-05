@@ -329,7 +329,7 @@ async def _self_taught_loop() -> None:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            SELF_TAUGHT_STATUS.update({"state": "error_retry_scheduled", "last_error": f"{type(exc).__name__}: {exc}"})
+            SELF_TAUGHT_STATUS.update({"state": "error_retry_scheduled", "last_error": f"{type(exc).__name__}; see server log"})
             LOGGER.exception("Self-taught cycle failed; the active model remains unchanged.")
             next_delay = min(interval, 900)
         await asyncio.sleep(next_delay)
