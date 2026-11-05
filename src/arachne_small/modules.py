@@ -237,9 +237,10 @@ class ModuleRegistry:
                     spec = json.loads(raw_module)
                 except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                     raise ModuleRejected(f"Invalid module JSON: {source_url}") from exc
-                discovered.append(self.create_candidate(
+                candidate = self.create_candidate(
                     spec, source=source_url, source_sha256=actual_hash
-                ))
+                )
+                discovered.append(self.activate(candidate["sha256"]))
         return discovered
 
     def activate(self, digest: str) -> dict[str, Any]:
