@@ -56,3 +56,48 @@ def test_acquisition_rejects_obvious_credentials_and_contact_details():
     assert _CONTACT_OR_SECRET.search("ghp_abcdefghijklmnopqrstuvwxyz123456")
     assert _CONTACT_OR_SECRET.search("AKIA1234567890ABCDEF")
     assert not _CONTACT_OR_SECRET.search("ArachneAI is a language model project.")
+
+
+
+def test_acquisition_persists_page_deduplication_between_cycles(tmp_path, monkeypatch):
+    import json
+    import sqlite3
+    import arachne_small.self_taught as self_taught
+
+    batch = {"tr": 0, "en": 0}
+    generation = {"value": 0}
+
+    def fake_fetch(language):
+        index = batch[language]
+        batch[language] += 1
+        page_id = generation["value"] * 20 + index + 1
+        return {
+            "text": f"<|language:{language}|>\nLicensed article {page_id} " + ("content " * 80),
+            "provenance": {"language": language, "page_id": page_id},
+        }
+
+    monkeypatch.setattr(self_taught, "_fetch_page", fake_fetch)
+    monkeypatch.setattr(self_taught.time, "sleep", lambda _seconds: None)
+    seen_db = tmp_path / "seen.sqlite3"
+
+    first = self_taught.acquire_wikipedia_corpus(
+        tmp_path / "first.jsonl", articles_per_language=20,
+        request_delay_seconds=1.0, max_attempts_per_language=20,
+        seen_database=seen_db,
+    )
+    assert first["records"] == 40
+
+    generation["value"] = 1
+    batch.update({"tr": 0, "en": 0})
+    second = self_taught.acquire_wikipedia_corpus(
+        tmp_path / "second.jsonl", articles_per_language=20,
+        request_delay_seconds=1.0, max_attempts_per_language=20,
+        seen_database=seen_db,
+    )
+    assert second["records"] == 40
+
+    with sqlite3.connect(seen_db) as database:
+        count = database.execute("SELECT COUNT(*) FROM seen_pages").fetchone()[0]
+    assert count == 80
+    assert len((tmp_path / "first.jsonl").read_text(encoding="utf-8").splitlines()) == 40
+    assert len((tmp_path / "second.jsonl").read_text(encoding="utf-8").splitlines()) == 40
