@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -123,8 +124,53 @@ def verify_artifact(artifact_dir: str | Path) -> dict:
 
 
 def load_model(artifact_dir: str | Path, device: str | torch.device = "cpu") -> tuple[ArachneSmall, spm.SentencePieceProcessor]:
-    """Load a verified inference artifact; this allocates the full model in memory."""
-    summary = verify_artifact(artifact_dir)
+    """Load a verified SafeTensors artifact or a trained, weights-only arachne_small.pt checkpoint."""
+    requested = Path(artifact_dir).expanduser()
+    if requested.is_symlink():
+        raise ValueError("Model artifact path cannot be a symbolic link.")
+    if requested.is_dir() and (requested / "arachne_small.pt").is_file():
+        requested = requested / "arachne_small.pt"
+    if requested.is_file() and requested.suffix.lower() == ".pt":
+        if requested.is_symlink():
+            raise ValueError("Model checkpoint cannot be a symbolic link.")
+        root = requested.parent
+        tokenizer_path = _artifact_file(root, "tokenizer.model")
+        checkpoint = torch.load(requested, map_location="cpu", weights_only=True)
+        if (not isinstance(checkpoint, dict)
+                or checkpoint.get("format") != "arachne-small-pytorch-checkpoint"
+                or checkpoint.get("format_version") != 1):
+            raise ValueError("Unsupported Arachne Small PyTorch checkpoint.")
+        training = checkpoint.get("training")
+        if not isinstance(training, dict) or training.get("status") != "trained":
+            raise ValueError("Arachne Small checkpoint has not completed training.")
+        model_data = checkpoint.get("model_config")
+        state = checkpoint.get("model_state_dict")
+        if not isinstance(model_data, dict) or not isinstance(state, dict):
+            raise ValueError("PyTorch checkpoint is missing model configuration or weights.")
+        model_config = ModelConfig(**model_data)
+        model_config.validate()
+        expected_shapes = _expected_state_shapes(model_config)
+        if set(state) != set(expected_shapes):
+            raise ValueError("PyTorch checkpoint tensor names do not match the model architecture.")
+        for name, shape in expected_shapes.items():
+            tensor = state[name]
+            if not isinstance(tensor, torch.Tensor) or tuple(tensor.shape) != shape:
+                raise ValueError(f"PyTorch checkpoint tensor shape mismatch: {name}")
+            if not tensor.is_floating_point() or not torch.isfinite(tensor).all():
+                raise ValueError(f"PyTorch checkpoint contains invalid weights: {name}")
+        tokenizer_hash = checkpoint.get("tokenizer_sha256")
+        if not isinstance(tokenizer_hash, str) or sha256_file(tokenizer_path) != tokenizer_hash:
+            raise ValueError("PyTorch checkpoint tokenizer checksum does not match tokenizer.model.")
+        tokenizer = spm.SentencePieceProcessor(model_file=str(tokenizer_path))
+        if tokenizer.vocab_size() != model_config.vocab_size:
+            raise ValueError("PyTorch checkpoint tokenizer vocabulary does not match model configuration.")
+        model = ArachneSmall(model_config)
+        model.load_state_dict(state, strict=True)
+        model.to(device)
+        model.eval()
+        return model, tokenizer
+
+    summary = verify_artifact(requested)
     root = Path(summary["artifact_dir"])
     config_data = json.loads((root / "config.json").read_text(encoding="utf-8"))
     model_config = ModelConfig(**config_data["model"])
@@ -135,3 +181,29 @@ def load_model(artifact_dir: str | Path, device: str | torch.device = "cpu") -> 
     model.eval()
     tokenizer = spm.SentencePieceProcessor(model_file=str(root / config_data["tokenizer"]["file"]))
     return model, tokenizer
+
+
+def discover_model_artifact(search_root: str | Path = "artifacts",
+                            device: str | torch.device = "cpu"):
+    """Load the newest valid trained model found below the local artifacts directory."""
+    root = Path(search_root).expanduser()
+    if not root.exists() or not root.is_dir() or root.is_symlink():
+        return None
+    candidates: list[Path] = []
+    for current, directories, files in os.walk(root, followlinks=False):
+        current_path = Path(current)
+        directories[:] = [name for name in directories
+                          if not (current_path / name).is_symlink()]
+        if "artifact-manifest.json" in files:
+            candidates.append(current_path)
+        checkpoint = current_path / "arachne_small.pt"
+        if "arachne_small.pt" in files and not checkpoint.is_symlink():
+            candidates.append(checkpoint)
+    candidates.sort(key=lambda path: path.stat().st_mtime_ns, reverse=True)
+    for candidate in candidates:
+        try:
+            model, tokenizer = load_model(candidate, device)
+            return model, tokenizer, candidate
+        except (OSError, ValueError, TypeError, KeyError, RuntimeError):
+            continue
+    return None
