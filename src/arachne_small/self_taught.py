@@ -575,8 +575,9 @@ def run_self_taught_cycle(
         result["promotion"] = {"version": version, "artifact": str(destination), "bootstrap": True}
         result["promoted"] = True
     published_checkpoint = artifact_root / "arachne_small.pt"
+    promoted_artifact = release_root / result["promotion"]["version"]
     _atomic_publish_checkpoint(
-        Path(result["promotion"]["artifact"]) / "arachne_small.pt",
+        promoted_artifact / "arachne_small.pt",
         published_checkpoint,
     )
     result["checkpoint_path"] = str(published_checkpoint)
