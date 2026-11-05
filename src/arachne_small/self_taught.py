@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import time
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -23,6 +24,8 @@ from .artifacts import verify_artifact
 from .learning import promote_candidate, _read_release_version
 
 LOGGER = logging.getLogger("arachne_small.self_taught")
+_REQUEST_LOCK = threading.Lock()
+_LAST_REQUEST_AT = 0.0
 USER_AGENT = "ArachneAISmall/0.1 (autonomous research crawler; contact: github.com/ismailozdemir01/ArachneAISmall)"
 WIKIPEDIA_LANGUAGES = ("tr", "en")
 _ALLOWED_LICENSES = {
@@ -42,6 +45,12 @@ _CONTACT_OR_SECRET = re.compile(
 
 
 def _get_json(url: str, *, timeout: float = 20.0) -> dict[str, Any]:
+    global _LAST_REQUEST_AT
+    with _REQUEST_LOCK:
+        wait = 1.0 - (time.monotonic() - _LAST_REQUEST_AT)
+        if wait > 0:
+            time.sleep(wait)
+        _LAST_REQUEST_AT = time.monotonic()
     request = urllib.request.Request(
         url,
         headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
@@ -305,10 +314,9 @@ def run_self_taught_cycle(
         tokenizer_path = base_artifact / "tokenizer.model"
     else:
         tokenizer_prefix = cycle / "tokenizer" / "arachne"
-        tokenizer_path = _write_tokenizer(
-            Path(export_text(str(train_jsonl), str(cycle / "tokenizer-corpus.txt")) and cycle / "tokenizer-corpus.txt"),
-            tokenizer_prefix,
-        )
+        tokenizer_text = cycle / "tokenizer-corpus.txt"
+        export_text(str(train_jsonl), str(tokenizer_text))
+        tokenizer_path = _write_tokenizer(tokenizer_text, tokenizer_prefix)
     processor = spm.SentencePieceProcessor(model_file=str(tokenizer_path))
     encode_jsonl(str(train_jsonl), str(train_tokens), str(tokenizer_path), "text", processor.eos_id())
     encode_jsonl(str(validation_jsonl), str(validation_tokens), str(tokenizer_path), "text", processor.eos_id())
@@ -332,8 +340,8 @@ def run_self_taught_cycle(
         "candidate_artifact": str(candidate_dir),
         "candidate_weights_sha256": candidate_summary["weights_sha256"],
         "parameter_count": candidate_summary["parameter_count"],
-        "training_steps": candidate_summary["training_steps_completed"],
-        "validation_loss": candidate_summary["final_validation_loss"],
+        "training_steps": json.loads((candidate_dir / "artifact-manifest.json").read_text(encoding="utf-8"))["training_steps_completed"],
+        "validation_loss": json.loads((candidate_dir / "artifact-manifest.json").read_text(encoding="utf-8"))["final_validation_loss"],
         "bootstrap": base_artifact is None,
         "promoted": False,
     }
@@ -355,7 +363,10 @@ def run_self_taught_cycle(
         shutil.copytree(candidate_dir, destination)
         pointer = release_root / "current.json"
         temporary = release_root / f".current-{uuid.uuid4().hex}.tmp"
-        temporary.write_text(json.dumps({"version": version}, indent=2) + "\n", encoding="utf-8")
+        temporary.write_text(json.dumps({
+            "format": "arachne-small-release", "format_version": 1,
+            "version": version, "artifact": version,
+        }, indent=2) + "\n", encoding="utf-8")
         os.replace(temporary, pointer)
         result["promotion"] = {"version": version, "artifact": str(destination), "bootstrap": True}
         result["promoted"] = True
