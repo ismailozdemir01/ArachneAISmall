@@ -200,10 +200,21 @@ def discover_model_artifact(search_root: str | Path = "artifacts",
     if current_pointer.is_file() and not current_pointer.is_symlink():
         try:
             pointer = json.loads(current_pointer.read_text(encoding="utf-8"))
-            version = pointer.get("version") if isinstance(pointer, dict) else None
-            if not isinstance(version, str) or not re.fullmatch(r"[0-9a-f]{64}", version):
+            if (not isinstance(pointer, dict)
+                    or pointer.get("format") != "arachne-small-release"
+                    or pointer.get("format_version") != 1):
+                return None
+            version = pointer.get("version")
+            if (not isinstance(version, str) or not re.fullmatch(r"[0-9a-f]{64}", version)
+                    or pointer.get("artifact") != version):
                 return None
             release = release_root / version
+            if release.is_symlink() or not release.is_dir():
+                return None
+            summary = verify_artifact(release)
+            from .learning import _release_content_hash
+            if _release_content_hash(summary) != version:
+                return None
             return (*load_model(release, device), release)
         except (OSError, ValueError, TypeError, KeyError, RuntimeError):
             return None
