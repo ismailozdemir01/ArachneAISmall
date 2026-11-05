@@ -1,0 +1,28 @@
+model:
+  vocab_size: 4000
+  d_model: 128
+  n_layers: 4
+  n_heads: 4
+  n_kv_heads: 2
+  max_seq_len: 256
+  intermediate_size: 352
+  rope_theta: 10000.0
+  norm_eps: 0.00001
+  tie_embeddings: false
+  gradient_checkpointing: false
+
+training:
+  seed: 1337
+  batch_size: 2
+  gradient_accumulation_steps: 1
+  max_steps: 80
+  learning_rate: 0.0003
+  min_learning_rate: 0.00003
+  warmup_steps: 8
+  weight_decay: 0.1
+  grad_clip: 1.0
+  eval_interval: 20
+  save_interval: 20
+  precision: fp32
+  num_workers: 0
+  output_dir: artifacts/self_taught/bootstrap
