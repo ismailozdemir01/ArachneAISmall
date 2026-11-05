@@ -365,6 +365,11 @@ def index() -> FileResponse:
     return FileResponse(FRONTEND_DIR / "index.html")
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> FileResponse:
+    return FileResponse(FRONTEND_DIR / "favicon.ico", media_type="image/x-icon")
+
+
 @app.get("/api/health")
 def health() -> dict:
     return {"status": "ok", "service": "arachne-small"}
