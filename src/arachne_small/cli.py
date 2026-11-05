@@ -10,6 +10,7 @@ from .trainer import train
 from .corpus import prepare_corpus, export_text
 from .artifacts import verify_artifact
 from .learning import FeedbackStore, evaluate_artifact, promote_candidate, rollback_release, run_learning_cycle
+from .modules import ModuleRegistry
 
 
 def main() -> None:
@@ -97,6 +98,18 @@ def main() -> None:
     cycle.add_argument("--max-loss-regression", type=float, default=0.0)
     cycle.add_argument("--batch-size", type=int, default=1)
     cycle.add_argument("--max-batches", type=int, default=200)
+    module_create = commands.add_parser("module-create", help="Validate and activate a self-generated declarative module")
+    module_create.add_argument("--spec", required=True, help="JSON module specification")
+    module_create.add_argument("--registry-dir", default="data/modules")
+    module_discover = commands.add_parser("module-discover", help="Discover and verify modules from trusted raw GitHub registry indexes")
+    module_discover.add_argument("--registry-url", action="append", required=True)
+    module_discover.add_argument("--registry-dir", default="data/modules")
+    module_list = commands.add_parser("module-list", help="List active verified modules")
+    module_list.add_argument("--registry-dir", default="data/modules")
+    module_run = commands.add_parser("module-run", help="Run one active declarative module")
+    module_run.add_argument("--registry-dir", default="data/modules")
+    module_run.add_argument("--id", required=True)
+    module_run.add_argument("--input", required=True)
     commands.add_parser("serve", help="Start the local inference API and web interface")
     args = parser.parse_args()
     if args.command == "tokenizer":
@@ -159,6 +172,19 @@ def main() -> None:
             max_loss_regression=args.max_loss_regression,
             batch_size=args.batch_size, max_batches=args.max_batches)
         print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif args.command == "module-create":
+        spec = json.loads(Path(args.spec).read_text(encoding="utf-8"))
+        registry = ModuleRegistry(args.registry_dir)
+        candidate = registry.create_candidate(spec)
+        activated = registry.activate(candidate["sha256"])
+        print(json.dumps(activated, ensure_ascii=False, indent=2))
+    elif args.command == "module-discover":
+        registry = ModuleRegistry(args.registry_dir)
+        print(json.dumps(registry.discover(args.registry_url), ensure_ascii=False, indent=2))
+    elif args.command == "module-list":
+        print(json.dumps(ModuleRegistry(args.registry_dir).list_active(), ensure_ascii=False, indent=2))
+    elif args.command == "module-run":
+        print(ModuleRegistry(args.registry_dir).run(args.id, args.input))
     elif args.command == "serve":
         from .server import main as serve
         serve()
