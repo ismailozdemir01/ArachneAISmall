@@ -5,14 +5,14 @@
 - **Name:** ArachneAI Small
 - **Purpose:** From-scratch Turkish and English decoder-only language model research and training.
 - **Architecture:** Decoder-only Transformer with RMSNorm, RoPE, grouped-query causal attention and SwiGLU.
-- **Target scale:** 1,523,714,048 parameters.
-- **Initialization:** Random initialization; no third-party pretrained model is used as a base.
+- **Target scale:** 1,523,714,048 parameters in `configs/1_5b.yaml`; the autonomous first-run bootstrap is a separate approximately 1.8M-parameter model.
+- **Initialization:** Random initialization; no third-party pretrained model is used as a base. The self-taught worker acquires licensed text and trains its bootstrap model from scratch.
 - **Tokenizer:** SentencePiece BPE, trained on the authorized training split.
 - **Artifact format:** SafeTensors inference artifact plus a portable `arachne_small.pt` weights-only PyTorch checkpoint; checkpoint loading uses `weights_only=True`.
 
 ## Release status
 
-The repository contains model and training implementation code. It does not currently contain trained weights or a released trained checkpoint. A local training run writes `arachne_small.pt` at initialization, updates it at configured save intervals, and marks it `trained` only after final validation. The server can discover and load a completed local checkpoint under `artifacts/`. A configuration describing a 1.5B-parameter model is not evidence that the model has been trained.
+The repository contains model and training implementation code; trained weights are generated locally and are not committed. Running `arachne-small serve` starts the self-taught worker, which acquires page-level license-checked Turkish/English Wikipedia extracts and trains a small bootstrap model. A local run writes `arachne_small.pt` at initialization, updates it at configured save intervals, and marks it `trained` only after final validation. The bootstrap is not the 1.5B target model. A configuration describing a 1.5B-parameter model is not evidence that the model has been trained.
 
 A trained release must include actual training provenance, dataset/license records, completed-step count, validation metrics, tokenizer checksum, model-weight checksum, and hardware/training details. No quality, safety, reasoning, multilinguality, or benchmark claim should be made until measured on a documented evaluation suite.
 
@@ -40,3 +40,10 @@ Only use training data with documented permission and a valid training-use basis
 - Safety and refusal evaluations appropriate to the intended deployment.
 - Robustness, long-context, and generation-quality evaluations.
 - Hardware, throughput, memory, and inference latency measurements.
+
+
+## Autonomous bootstrap status
+
+The automatic bootstrap model uses a 128-dimensional hidden size, 4 Transformer layers, 4 attention heads and a 256-token context. Its exact parameter count depends on the tokenizer vocabulary (configured target 4,000). It is intended to establish a real end-to-end training loop, not to claim production assistant capability or 1.5B-scale quality. The worker repeats acquisition and candidate training every six hours by default and promotes only candidates that do not regress on the cycle's held-out validation set.
+
+The training corpus is acquired from Wikipedia pages whose REST metadata reports CC BY-SA 3.0 or 4.0. Per-page attribution and revision metadata are retained locally. The automated filter is not a legal determination; see [Dataset Policy](DATASET_POLICY.md) and [Self-Taught Learning](SELF_TAUGHT.md).
