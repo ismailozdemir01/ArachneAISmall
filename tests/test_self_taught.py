@@ -3,6 +3,8 @@ from arachne_small.self_taught import (
     _is_living_person_category,
     _bootstrap_config,
     _CONTACT_OR_SECRET,
+    _retry_after_seconds,
+    WikimediaRateLimited,
 )
 
 
@@ -101,3 +103,18 @@ def test_acquisition_persists_page_deduplication_between_cycles(tmp_path, monkey
     assert count == 80
     assert len((tmp_path / "first.jsonl").read_text(encoding="utf-8").splitlines()) == 40
     assert len((tmp_path / "second.jsonl").read_text(encoding="utf-8").splitlines()) == 40
+
+
+
+def test_wikimedia_retry_after_is_bounded_and_invalid_values_use_safe_default():
+    assert _retry_after_seconds("120") == 120.0
+    assert _retry_after_seconds("0") == 60.0
+    assert _retry_after_seconds("999999") == 21600.0
+    assert _retry_after_seconds("not-a-number") == 900.0
+    assert _retry_after_seconds(None) == 900.0
+
+
+def test_wikimedia_rate_limit_exception_carries_bounded_cooldown():
+    error = WikimediaRateLimited(3600)
+    assert error.retry_after_seconds == 3600.0
+    assert WikimediaRateLimited(999999).retry_after_seconds == 21600.0
