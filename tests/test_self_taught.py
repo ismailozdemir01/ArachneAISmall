@@ -2,6 +2,7 @@ from arachne_small.self_taught import (
     _is_approved_license,
     _is_living_person_category,
     _bootstrap_config,
+    _CONTACT_OR_SECRET,
 )
 
 
@@ -47,3 +48,11 @@ def test_bootstrap_model_is_real_small_transformer_configuration(tmp_path):
     assert config.model.parameter_count() < 20_000_000
     assert config.training.max_steps > 0
     assert config.training.output_dir == str(tmp_path / "run")
+
+
+
+def test_acquisition_rejects_obvious_credentials_and_contact_details():
+    assert _CONTACT_OR_SECRET.search("Contact user@example.com")
+    assert _CONTACT_OR_SECRET.search("ghp_abcdefghijklmnopqrstuvwxyz123456")
+    assert _CONTACT_OR_SECRET.search("AKIA1234567890ABCDEF")
+    assert not _CONTACT_OR_SECRET.search("ArachneAI is a language model project.")
