@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from . import __version__
 from .artifacts import load_model
 from .learning import FeedbackStore
+from .modules import ModuleRegistry, ModuleRejected
 
 LOGGER = logging.getLogger("arachne_small.server")
 FRONTEND_DIR = Path(__file__).with_name("frontend")
@@ -133,6 +134,21 @@ class FeedbackRequest(BaseModel):
     language: Literal["tr", "en"]
 
 
+class ModuleCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    module: dict
+
+
+class ModuleDiscoverRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    registry_urls: list[str] = Field(min_length=1, max_length=20)
+
+
+class ModuleRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    text: str = Field(max_length=100_000)
+
+
 class GenerateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     prompt: str = Field(min_length=1, max_length=MAX_PROMPT_CHARS)
@@ -191,7 +207,7 @@ app.mount("/assets", StaticFiles(directory=FRONTEND_DIR), name="assets")
 
 @app.middleware("http")
 async def protect_inference_and_feedback(request: Request, call_next):
-    if request.url.path in {"/api/generate", "/api/feedback"}:
+    if request.url.path in {"/api/generate", "/api/feedback"} or request.url.path.startswith("/api/modules"):
         token = _api_token()
         remote_mode = os.environ.get("ARACHNE_SMALL_ALLOW_REMOTE") == "1"
         if remote_mode and (token is None or len(token) < 32):
@@ -258,6 +274,44 @@ def submit_feedback(payload: FeedbackRequest) -> dict:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+def _module_registry() -> ModuleRegistry:
+    return ModuleRegistry(os.environ.get("ARACHNE_SMALL_MODULE_DIR", "data/modules"))
+
+
+@app.get("/api/modules")
+def list_modules() -> dict:
+    return {"modules": _module_registry().list_active()}
+
+
+@app.post("/api/modules/create")
+def create_module(payload: ModuleCreateRequest) -> dict:
+    try:
+        registry = _module_registry()
+        candidate = registry.create_candidate(payload.module)
+        return registry.activate(candidate["sha256"])
+    except (ModuleRejected, ValueError, OSError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/modules/discover")
+def discover_modules(payload: ModuleDiscoverRequest) -> dict:
+    try:
+        modules = _module_registry().discover(payload.registry_urls)
+        return {"discovered_and_activated": modules}
+    except (ModuleRejected, ValueError, OSError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/modules/{module_id}/run")
+def run_module(module_id: str, payload: ModuleRunRequest) -> dict:
+    try:
+        return {"module_id": module_id, "output": _module_registry().run(module_id, payload.text)}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (ModuleRejected, ValueError, OSError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/api/generate")
