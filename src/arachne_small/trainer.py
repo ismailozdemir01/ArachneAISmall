@@ -115,6 +115,28 @@ def _atomic_safetensors_save(state: dict, destination: Path) -> None:
         os.replace(temporary, destination)
 
 
+
+def _atomic_model_checkpoint(model, destination: Path, config: Config,
+                             step: int, tokens_seen: int, tokenizer_sha256: str,
+                             status: str, validation_loss: float | None = None) -> None:
+    """Write a portable weights-only .pt checkpoint using PyTorch's safe loader format."""
+    if status not in {"initialized", "training", "trained"}:
+        raise ValueError("Invalid model checkpoint status.")
+    payload = {
+        "format": "arachne-small-pytorch-checkpoint",
+        "format_version": 1,
+        "model_config": config.model.__dict__.copy(),
+        "model_state_dict": model.state_dict(),
+        "training": {
+            "status": status,
+            "step": int(step),
+            "tokens_seen": int(tokens_seen),
+            "validation_loss": validation_loss,
+        },
+        "tokenizer_sha256": tokenizer_sha256,
+    }
+    _atomic_torch_save(payload, destination)
+
 def train(config: Config, train_path: str, validation_path: str,
           tokenizer_path: str, resume: str | None = None,
           initial_artifact: str | None = None) -> Path:
@@ -280,6 +302,11 @@ def train(config: Config, train_path: str, validation_path: str,
     if resume:
         _truncate_training_log(log_path, start_step)
     (out / "checkpoints").mkdir(parents=True, exist_ok=True)
+    model_checkpoint_path = out / "arachne_small.pt"
+    _atomic_model_checkpoint(
+        model, model_checkpoint_path, config, start_step, tokens_seen,
+        tokenizer_sha256, "initialized" if start_step == 0 else "training",
+    )
     iterator = iter(train_loader)
     model.train()
     for step in range(start_step, config.training.max_steps):
@@ -331,7 +358,15 @@ def train(config: Config, train_path: str, validation_path: str,
                                 "training_config": config.training.__dict__,
                                 "tokenizer_sha256": tokenizer_sha256,
                                 "initial_artifact": initial_artifact}, path)
+            _atomic_model_checkpoint(
+                model, model_checkpoint_path, config, step + 1, tokens_seen,
+                tokenizer_sha256, "training", record.get("validation_loss"),
+            )
     final_validation_loss = evaluate(model, val_loader, device, precision=precision)
+    _atomic_model_checkpoint(
+        model, model_checkpoint_path, config, config.training.max_steps,
+        tokens_seen, tokenizer_sha256, "trained", final_validation_loss,
+    )
     final_validation_perplexity = math.exp(min(80.0, final_validation_loss))
     model_path = out / "model.safetensors"
     tokenizer_output = out / "tokenizer.model"
