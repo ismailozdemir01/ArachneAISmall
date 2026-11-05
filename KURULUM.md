@@ -101,6 +101,7 @@ arachne-small serve
 Alternatif doğrudan ASGI başlatma komutu:
 
 ```powershell
+$env:ARACHNE_SMALL_SELF_TAUGHT = "1"
 python -m uvicorn arachne_small.server:app --host 127.0.0.1 --port 8000
 ```
 
@@ -251,6 +252,7 @@ Testler yerel makinede çalışır. Bu komut GitHub Actions/CI tetiklemez.
 - Sunucuyu doğrudan internete açmayın.
 - Uzak erişim zorunluysa en az 32 karakterlik güçlü ve benzersiz `ARACHNE_SMALL_API_TOKEN` tanımlayın; `ARACHNE_SMALL_ALLOW_REMOTE=1` ayarını yalnızca TLS, kimlik doğrulamalı reverse proxy ve ağ erişim kontrolleri hazır olduğunda kullanın.
 - API token'ını kaynak koda, Git'e, ekran görüntülerine veya loglara koymayın.
+- Self-taught işçisi varsayılan olarak açıktır; kapatmak için `ARACHNE_SMALL_SELF_TAUGHT=0` ayarlayın. Doğrudan Uvicorn başlatırken etkinleştirmek için `ARACHNE_SMALL_SELF_TAUGHT=1` tanımlayın.
 - Otomatik kaynak işçisi yalnızca sayfa metadata'sı CC BY-SA 3.0/4.0 döndüren Wikipedia içeriklerini kabul eder; otomatik kontrol hukuki görüş değildir.
 - `.env`, ham veri, yerel veritabanı, checkpoint ve model artifact dosyalarını depoya göndermeyin.
 
@@ -289,7 +291,7 @@ Ardından http://127.0.0.1:8001 adresini açın.
 
 ### Servis çalışıyor ama üretim HTTP 503 dönüyor
 
-`/api/status` adresini kontrol edin. `artifact_missing` veya `error` durumu, doğrulanmış model paketinin yüklenmediğini gösterir. Sadece sunucuyu başlatmak model eğitmez; gerçek ve doğrulanmış artifact gereklidir.
+`/api/status` adresini kontrol edin. `self_taught.state` alanı `acquiring_and_training` ise ilk otomatik eğitim sürüyor; `last_error` alanı son hatayı gösterir. Model ancak eğitim ve doğrulama tamamlanıp yayınlandığında `ready: true` olur.
 
 ### Sunucuyu durdurma
 
