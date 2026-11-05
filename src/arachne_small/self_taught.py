@@ -241,7 +241,7 @@ def acquire_wikipedia_corpus(
                                 output.flush()
                                 counts[language] += 1
                                 records += 1
-                    except (OSError, ValueError, KeyError, TypeError, urllib.error.URLError) as exc:
+                    except (OSError, ValueError, KeyError, TypeError, AttributeError, urllib.error.URLError) as exc:
                         LOGGER.warning("Wikimedia %s acquisition attempt %d failed: %s", language, attempts, exc)
                     time.sleep(float(request_delay_seconds))
         if min(counts.values()) < 20:
