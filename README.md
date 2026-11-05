@@ -1,17 +1,106 @@
 # ArachneAISmall
 
-**ArachneAISmall is an open-source, from-scratch Turkish–English language-model engineering and training project in the ArachneAI ecosystem.** It brings together corpus governance, tokenizer training, decoder-only Transformer training, verifiable model artifacts, local inference, consent-based feedback, controlled continual learning, and a security-constrained declarative module system.
+<p align="center">
+  <strong>Türkçe / English</strong><br>
+  Sıfırdan Türkçe–İngilizce dil modeli geliştirme, eğitim ve güvenli yerel çalışma altyapısı.<br>
+  From-scratch Turkish–English language-model engineering, training, and secure local runtime.
+</p>
 
-- **Target languages:** Turkish and English
-- **Target architecture scale:** 1.5B-class
-- **Configured parameter count:** 1,523,714,048
-- **Initialization:** Random initialization; no third-party pretrained weights are used as the base
-- **Artifact format:** Arachne Small v1 with SafeTensors inference weights
-- **Current release status:** Training and runtime software are in the repository; trained model weights and a training corpus are not published
+[🇹🇷 Türkçe dokümantasyon](README_TR.md) · [🇬🇧 English documentation](#english) · [Kurulum / Installation](KURULUM.md)
 
-[🇹🇷 Türkçe README](README_TR.md) · [Installation guide (Turkish)](KURULUM.md)
+---
 
-> **Important model-status statement:** The 1.5B configuration describes the target architecture. It does not mean that a 1.5B model has already been trained or released. Until a verified trained artifact is supplied, the API and web interface can start, but text generation remains unavailable and returns HTTP 503. The application does not fabricate responses or silently initialize random weights for inference.
+## Türkçe
+
+**ArachneAISmall**, ArachneAI ekosistemi için sıfırdan geliştirilen, Türkçe ve İngilizce odaklı bir dil modeli mühendisliği projesidir. Veri hazırlama, tokenizer eğitimi, Transformer eğitimi, model artifact doğrulama, yerel API/web arayüzü, rızaya dayalı geri bildirim, kontrollü sürekli öğrenme ve güvenlik sınırları belirlenmiş bildirimsel modül yönetimini kapsar.
+
+### Özellikler ve kabiliyetler
+
+- **Model mimarisi:** PyTorch tabanlı decoder-only Transformer; RMSNorm, RoPE, Grouped-Query Attention (GQA), SwiGLU ve residual bağlantılar.
+- **Hedef ölçek:** `configs/1_5b.yaml` içinde yapılandırılmış 1.523.714.048 parametreli 1.5B sınıfı hedef mimari.
+- **Veri hattı:** UTF-8 JSONL içe aktarma, kaynak/lisans kaydı, Unicode ve boşluk normalizasyonu, disk tabanlı mükerrer temizliği, deterministik eğitim/doğrulama ayrımı.
+- **Tokenizer:** SentencePiece BPE eğitimi; tokenizer kimliği ve özel token doğrulaması.
+- **Token hazırlama:** Little-endian uint32 token akışları, SHA-256 checksum ve kaynak metaverisi.
+- **Eğitim:** AdamW, gradient accumulation, gradient clipping, warmup/cosine öğrenme oranı, doğrulama değerlendirmesi, isteğe bağlı gradient checkpointing ve precision ayarları.
+- **Checkpoint yönetimi:** Atomik checkpoint yazımı, doğrulanmış devam eğitimi ve doğrulanmış artifact üzerinden yeni optimizer ile devam.
+- **Artifact güvenliği:** SafeTensors, sürümlü manifest, SHA-256, tokenizer/tensor şekli/parametre sayısı doğrulaması; yol geçişi ve sembolik bağlantı kontrolleri.
+- **Yerel çalışma zamanı:** FastAPI + Uvicorn, Türkçe/İngilizce web arayüzü, OpenAPI dokümantasyonu ve model durum uç noktaları.
+- **Metin üretimi:** Yalnızca doğrulanmış model artifact yüklendiğinde; token sayısı, temperature, top-k, dil ve konuşma geçmişi sınırlarıyla.
+- **Bildirimsel modüller:** Şema ve semantik sürüm kontrolü, deterministik test vektörleri, aday doğrulama, etkinleştirme, listeleme, çalıştırma ve güvenilir registry keşfi.
+- **Modül güvenliği:** Sınırlı metin dönüşüm işlemleri; keyfî Python, shell, import veya `eval` çalıştırma yoktur. Registry kaynakları HTTPS, değişmez Git commit URL'si ve SHA-256 ile doğrulanır.
+- **Geri bildirim yönetişimi:** Açık kullanıcı rızası, yerel SQLite saklama, operatör onayı/reddi ve bütünlük metaverili dışa aktarma.
+- **Kontrollü sürekli öğrenme:** Onaylanmış geri bildirimlerle aday ince ayarı, sabit doğrulama akışında baseline karşılaştırması, yayın kapısı ve doğrulanmış rollback.
+- **Güvenlik ve gizlilik:** Varsayılan loopback erişimi, uzaktan erişimde açık opt-in ve Bearer token, istek boyutu sınırları, güvenli artifact yükleme ve yerel geri bildirim saklama.
+
+### Önemli model durumu
+
+<strong>1.5B, yapılandırılmış hedef mimari ölçeğidir; eğitilmiş ve yayımlanmış bir model olduğu anlamına gelmez.</strong> Depoda eğitim ve çalışma zamanı yazılımı bulunur; eğitilmiş ağırlıklar ve eğitim korpusu yayımlanmış değildir. Bu nedenle doğrulanmış model artifact'i sağlanmadan servis ve web arayüzü açılır, ancak metin üretimi kullanılamaz ve API HTTP 503 döndürür. Sistem rastgele ağırlıklarla sahte yanıt üretmez.
+
+### Hızlı başlatma
+
+```powershell
+git clone https://github.com/ismailozdemir01/ArachneAISmall.git
+cd ArachneAISmall
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+arachne-small serve
+```
+
+Tarayıcı: http://127.0.0.1:8000  
+Sağlık: http://127.0.0.1:8000/api/health  
+Durum: http://127.0.0.1:8000/api/status  
+API: http://127.0.0.1:8000/docs
+
+Windows ve Linux/WSL için PyTorch kurulumu, model artifact ayarı ve ayrıntılı komutlar: [KURULUM.md](KURULUM.md).
+
+---
+
+## English
+
+**ArachneAISmall** is a from-scratch Turkish–English language-model engineering project in the ArachneAI ecosystem. It covers data preparation, tokenizer training, Transformer training, model-artifact verification, a local API/web interface, consent-based feedback, controlled continual learning, and a security-constrained declarative module system.
+
+### Features and capabilities
+
+- **Model architecture:** PyTorch decoder-only Transformer with RMSNorm, RoPE, Grouped-Query Attention (GQA), SwiGLU, and residual connections.
+- **Target scale:** A 1.5B-class target architecture configured for 1,523,714,048 parameters in `configs/1_5b.yaml`.
+- **Data pipeline:** UTF-8 JSONL ingestion, source/license provenance, Unicode and whitespace normalization, disk-backed deduplication, and deterministic train/validation splits.
+- **Tokenizer:** SentencePiece BPE training with tokenizer identity and special-token validation.
+- **Token preparation:** Little-endian uint32 token streams with SHA-256 checksums and provenance metadata.
+- **Training:** AdamW, gradient accumulation and clipping, warmup/cosine learning-rate scheduling, validation evaluation, optional gradient checkpointing, and precision settings.
+- **Checkpoint management:** Atomic checkpoint writes, validated resume, and continued training from a verified artifact with a fresh optimizer.
+- **Artifact security:** SafeTensors, versioned manifests, SHA-256, tokenizer/tensor-shape/parameter-count validation, path-traversal and symlink checks.
+- **Local runtime:** FastAPI + Uvicorn, Turkish/English browser interface, OpenAPI documentation, and model-status endpoints.
+- **Text generation:** Available only when a verified model artifact is loaded; request controls bound token count, temperature, top-k, language, and conversation history.
+- **Declarative modules:** Schema and semantic-version validation, deterministic test vectors, candidate verification, activation, listing, execution, and trusted-registry discovery.
+- **Module security:** Bounded text transformations only; no arbitrary Python, shell, import, or `eval` execution. Registry sources require HTTPS, immutable Git commit URLs, and SHA-256 verification.
+- **Feedback governance:** Explicit user consent, local SQLite storage, operator approval/rejection, and export with integrity metadata.
+- **Controlled continual learning:** Candidate fine-tuning from approved feedback, baseline comparison on a fixed validation stream, promotion gates, and verified rollback.
+- **Security and privacy:** Loopback access by default, explicit opt-in and Bearer-token authentication for remote access, bounded requests, safe artifact loading, and local feedback storage.
+
+### Important model status
+
+<strong>1.5B describes the configured target architecture; it does not mean a trained model has been released.</strong> The repository contains the training and runtime software, but trained weights and a training corpus have not been published. Without a verified model artifact, the service and web interface can start, but text generation remains unavailable and the API returns HTTP 503. The application does not generate fabricated responses from random weights.
+
+### Quick start
+
+```powershell
+git clone https://github.com/ismailozdemir01/ArachneAISmall.git
+cd ArachneAISmall
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+arachne-small serve
+```
+
+Web interface: http://127.0.0.1:8000  
+Health: http://127.0.0.1:8000/api/health  
+Runtime status: http://127.0.0.1:8000/api/status  
+API documentation: http://127.0.0.1:8000/docs
+
+See [KURULUM.md](KURULUM.md) for the complete Windows and Linux/WSL setup, PyTorch installation, artifact configuration, and operational commands. The detailed English technical reference follows.
 
 ---
 
@@ -472,3 +561,4 @@ The repository currently contains the implementation and validation pipeline, no
 ## License
 
 The source code is licensed under the [Apache License 2.0](LICENSE). The repository code license does not automatically apply to external datasets, third-party assets, or future trained model weights; those materials require their own applicable terms.
+
