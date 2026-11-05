@@ -41,7 +41,7 @@ These directories are local runtime data and must not be committed to Git.
 |---|---:|---|
 | `ARACHNE_SMALL_SELF_TAUGHT` | enabled by `arachne-small serve` | Set to `0` to disable the worker |
 | `ARACHNE_SMALL_SELF_TAUGHT_INTERVAL` | `21600` | Seconds between completed cycles; bounded to 30 minutes–7 days |
-| `ARACHNE_SMALL_SELF_TAUGHT_ARTICLES_PER_LANGUAGE` | `40` | Per-cycle target per language; 10–500 |
+| `ARACHNE_SMALL_SELF_TAUGHT_ARTICLES_PER_LANGUAGE` | `40` | Per-cycle target per language; 20–500 |
 | `ARACHNE_SMALL_SELF_TAUGHT_DATA` | `data/self_taught` | Local acquisition and corpus directory |
 | `ARACHNE_SMALL_SELF_TAUGHT_ARTIFACTS` | `artifacts/self_taught` | Local candidate model and checkpoint directory |
 | `ARACHNE_SMALL_RELEASE_DIR` | `artifacts/releases` | Content-addressed active model releases |
