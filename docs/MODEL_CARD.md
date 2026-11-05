@@ -8,11 +8,11 @@
 - **Target scale:** 1,523,714,048 parameters.
 - **Initialization:** Random initialization; no third-party pretrained model is used as a base.
 - **Tokenizer:** SentencePiece BPE, trained on the authorized training split.
-- **Artifact format:** Arachne Small format v1; SafeTensors weights.
+- **Artifact format:** SafeTensors inference artifact plus a portable `arachne_small.pt` weights-only PyTorch checkpoint; checkpoint loading uses `weights_only=True`.
 
 ## Release status
 
-The repository contains model and training implementation code. It does not currently contain trained weights or a released trained checkpoint. A configuration describing a 1.5B-parameter model is not evidence that the model has been trained.
+The repository contains model and training implementation code. It does not currently contain trained weights or a released trained checkpoint. A local training run writes `arachne_small.pt` at initialization, updates it at configured save intervals, and marks it `trained` only after final validation. The server can discover and load a completed local checkpoint under `artifacts/`. A configuration describing a 1.5B-parameter model is not evidence that the model has been trained.
 
 A trained release must include actual training provenance, dataset/license records, completed-step count, validation metrics, tokenizer checksum, model-weight checksum, and hardware/training details. No quality, safety, reasoning, multilinguality, or benchmark claim should be made until measured on a documented evaluation suite.
 
