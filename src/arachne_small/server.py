@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from . import __version__
-from .artifacts import load_model
+from .artifacts import load_model, discover_model_artifact
 from .learning import FeedbackStore, run_learning_cycle, _read_release_version
 from .modules import ModuleRegistry, ModuleRejected
 
@@ -295,6 +295,20 @@ async def lifespan(app: FastAPI):
             LOGGER.info("Loaded verified Arachne Small artifact from %s", artifact)
         except Exception:
             LOGGER.exception("Arachne Small artifact could not be loaded")
+    else:
+        try:
+            discovered = await asyncio.to_thread(discover_model_artifact, "artifacts", runtime.device)
+            if discovered is not None:
+                model, tokenizer, model_path = discovered
+                with runtime.lock:
+                    runtime.model, runtime.tokenizer = model, tokenizer
+                    runtime.artifact_dir = model_path
+                    runtime.load_error = None
+                LOGGER.info("Automatically discovered and loaded trained Arachne Small model from %s", model_path)
+            else:
+                LOGGER.info("No completed Arachne Small model was found under ./artifacts.")
+        except Exception:
+            LOGGER.exception("Automatic local model discovery failed; inference remains disabled")
     raw_registries = os.environ.get("ARACHNE_SMALL_MODULE_REGISTRIES", "")
     registry_urls = [item.strip() for item in raw_registries.split(";") if item.strip()]
     discovery_task = None
