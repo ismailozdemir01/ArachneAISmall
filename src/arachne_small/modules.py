@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 _MODULE_ID = re.compile(r"^[a-z][a-z0-9_-]{2,63}$")
-_VERSION = re.compile(r"^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$")
+_VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 _ALLOWED_HOSTS = {"raw.githubusercontent.com"}
 _MAX_DOCUMENT_BYTES = 256 * 1024
 _MAX_REGISTRY_BYTES = 1024 * 1024
