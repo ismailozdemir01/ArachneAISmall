@@ -24,6 +24,26 @@ from .trainer import train
 from .artifacts import verify_artifact
 from .learning import promote_candidate, _read_release_version
 
+class WikimediaRateLimited(RuntimeError):
+    """A Wikimedia 429 response with a bounded server-provided cooldown."""
+
+    def __init__(self, retry_after_seconds: float) -> None:
+        self.retry_after_seconds = max(60.0, min(float(retry_after_seconds), 21600.0))
+        super().__init__(f"Wikimedia rate limit reached; retry after {self.retry_after_seconds:.0f} seconds.")
+
+
+def _retry_after_seconds(value: str | None) -> float:
+    if value is None:
+        return 900.0
+    try:
+        seconds = float(value.strip())
+    except (TypeError, ValueError):
+        return 900.0
+    if not (seconds >= 0 and seconds < float("inf")):
+        return 900.0
+    return max(60.0, min(seconds, 21600.0))
+
+
 LOGGER = logging.getLogger("arachne_small.self_taught")
 _REQUEST_LOCK = threading.Lock()
 _LAST_REQUEST_AT = 0.0
@@ -57,7 +77,13 @@ def _get_json(url: str, *, timeout: float = 20.0) -> dict[str, Any]:
         headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
         method="GET",
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    try:
+        response_context = urllib.request.urlopen(request, timeout=timeout)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 429:
+            raise WikimediaRateLimited(_retry_after_seconds(exc.headers.get("Retry-After"))) from exc
+        raise
+    with response_context as response:
         final = urllib.parse.urlparse(response.geturl())
         original = urllib.parse.urlparse(url)
         if final.scheme != "https" or final.hostname != original.hostname:
@@ -241,6 +267,10 @@ def acquire_wikipedia_corpus(
                                 output.flush()
                                 counts[language] += 1
                                 records += 1
+                    except WikimediaRateLimited:
+                        # A 429 is a source-wide throttle signal, not a bad random page.
+                        # Abort this cycle immediately and let the worker honor Retry-After.
+                        raise
                     except (OSError, ValueError, KeyError, TypeError, AttributeError, urllib.error.URLError) as exc:
                         LOGGER.warning("Wikimedia %s acquisition attempt %d failed: %s", language, attempts, exc)
                     time.sleep(float(request_delay_seconds))
