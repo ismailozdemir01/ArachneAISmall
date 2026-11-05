@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -194,11 +195,24 @@ def discover_model_artifact(search_root: str | Path = "artifacts",
     root = Path(search_root).expanduser()
     if not root.exists() or not root.is_dir() or root.is_symlink():
         return None
+    release_root = root / "releases"
+    current_pointer = release_root / "current.json"
+    if current_pointer.is_file() and not current_pointer.is_symlink():
+        try:
+            pointer = json.loads(current_pointer.read_text(encoding="utf-8"))
+            version = pointer.get("version") if isinstance(pointer, dict) else None
+            if not isinstance(version, str) or not re.fullmatch(r"[0-9a-f]{64}", version):
+                return None
+            release = release_root / version
+            return (*load_model(release, device), release)
+        except (OSError, ValueError, TypeError, KeyError, RuntimeError):
+            return None
     candidates: list[Path] = []
     for current, directories, files in os.walk(root, followlinks=False):
         current_path = Path(current)
         directories[:] = [name for name in directories
-                          if not (current_path / name).is_symlink()]
+                          if name not in {"self_taught", "learning-work", "releases"}
+                          and not (current_path / name).is_symlink()]
         if "artifact-manifest.json" in files:
             candidates.append(current_path)
         checkpoint = current_path / "arachne_small.pt"
