@@ -203,7 +203,7 @@ Bu komut self-taught işçisini otomatik etkinleştirir. İlk döngü:
 7. Sıfırdan küçük bootstrap Transformer eğitir ve `artifacts/self_taught/cycle-*/arachne_small.pt` dosyasını oluşturur.
 8. Doğrulama başarılı olduğunda modeli `artifacts/releases` altında sürümlü olarak etkinleştirir.
 
-İlk model yaklaşık 1.8 milyon parametrelidir; 1.5B hedef yapılandırması değildir. Sonraki döngüler varsayılan olarak 6 saatte bir yeni makale toplar, aynı tokenizer/mimariyle yeni verileri birikimli replay korpusuna ekler; başlangıçta ayrılan sabit doğrulama kümesini eğitim dışında tutar ve doğrulama kaybı baseline'dan kötü değilse yayınlar. Reddedilen aday aktif modeli değiştirmez.
+İlk model yaklaşık 1.8 milyon parametrelidir; 1.5B hedef yapılandırması değildir. Sonraki döngüler varsayılan olarak 6 saatte bir yeni makale toplar, aynı tokenizer/mimariyle yeni verileri birikimli replay korpusuna ekler; her döngüde ayrılan yeni doğrulama kümesini eğitim dışında tutar ve doğrulama kaybı baseline'dan kötü değilse yayınlar. Reddedilen aday aktif modeli değiştirmez.
 
 Durumu kontrol edin:
 
@@ -215,7 +215,7 @@ Durumu kontrol edin:
 - Ham kaynak ve sayfa atıfları: `data/self_taught/cycle-*/wikipedia.jsonl`
 - Bölünmüş korpus: `data/self_taught/cycle-*/split/`
 - Birikimli eğitim replay korpusu: `data/self_taught/replay/train.jsonl`
-- Sabit doğrulama kümesi: `data/self_taught/replay/validation.jsonl`
+- Her döngünün doğrulama kümesi: `data/self_taught/cycle-*/split/validation.jsonl`
 - PyTorch checkpoint: `artifacts/self_taught/cycle-*/arachne_small.pt`
 - Etkin sürüm: `artifacts/releases/current.json`
 - Yayınlanmış checkpoint: `artifacts/releases/<sha256>/arachne_small.pt`
