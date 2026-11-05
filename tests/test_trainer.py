@@ -1,6 +1,7 @@
 import hashlib
 import json
 import struct
+import torch
 
 import pytest
 
@@ -99,6 +100,14 @@ def test_tiny_training_writes_versioned_model_and_checkpoint(tmp_path):
     assert manifest["final_validation_loss"] >= 0
     assert (tmp_path / "run" / "tokenizer.model").read_bytes() == tokenizer_path.read_bytes()
     assert (tmp_path / "run" / "checkpoints" / "step-00000001.pt").is_file()
+    model_checkpoint_path = tmp_path / "run" / "arachne_small.pt"
+    assert model_checkpoint_path.is_file()
+    model_checkpoint = torch.load(model_checkpoint_path, map_location="cpu", weights_only=True)
+    assert model_checkpoint["format"] == "arachne-small-pytorch-checkpoint"
+    assert model_checkpoint["training"]["status"] == "trained"
+    assert model_checkpoint["training"]["step"] == 1
+    assert model_checkpoint["tokenizer_sha256"] == tokenizer_hash
+    assert "token_embedding.weight" in model_checkpoint["model_state_dict"]
     assert artifact and all(tensor.is_floating_point() for tensor in artifact.values())
 
     from dataclasses import replace
