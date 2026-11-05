@@ -2,7 +2,7 @@
 
 Bu belge, ArachneAISmall deposunu Windows PowerShell veya Linux/WSL üzerinde indirip kurmak, yerel API/web arayüzünü başlatmak ve çalışma durumunu doğrulamak için hazırlanmıştır.
 
-> **Model durumu:** Depo, model mimarisi ve eğitim/çıkarım yazılımını içerir. Eğitilmiş 1.5B model ağırlıkları bu depoda yayımlanmış değildir. Bu nedenle aşağıdaki kurulum API ve web arayüzünü çalıştırır; doğrulanmış bir model paketi ayrıca sağlanmadıkça metin üretimi etkinleşmez. Uygulama rastgele ağırlıklarla sahte yanıt üretmez.
+> **Model durumu:** Depoda eğitilmiş 1.5B ağırlıklar yayımlanmış değildir. `arachne-small serve` varsayılan olarak self-taught işçisini başlatır; bu işçi Türkçe/İngilizce lisans kontrollü kaynaklardan veri toplar ve yaklaşık 1.8M parametreli küçük bootstrap modeli sıfırdan eğitir. Bu model 1.5B hedefi değildir. Gerçek üretim ancak eğitim, doğrulama ve model etkinleştirmesi tamamlandıktan sonra açılır.
 
 ## 1. Gereksinimler
 
