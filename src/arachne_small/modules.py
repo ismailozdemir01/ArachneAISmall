@@ -187,7 +187,7 @@ class ModuleRegistry:
         if source != "self-generated":
             if (not isinstance(source_sha256, str)
                     or not re.fullmatch(r"[0-9a-f]{64}", source_sha256)):
-                raise ModuleRejected("Discovered modules require a verified source SHA-256.")
+                raise ModuleRejected("Discovered modules require a verified source digest (SHA-256).")
             source = _safe_url(source)
         elif source_sha256 is not None:
             raise ModuleRejected("Self-generated modules cannot claim an external source digest.")
