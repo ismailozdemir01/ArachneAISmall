@@ -334,7 +334,22 @@ def run_self_taught_cycle(
                 if discovered_path.is_dir() and (discovered_path / "artifact-manifest.json").is_file():
                     base_artifact = discovered_path
     if base_artifact is not None:
-        verify_artifact(base_artifact)
+        base_summary = verify_artifact(base_artifact)
+        parameter_count = int(base_summary["parameter_count"])
+        if parameter_count > 20_000_000:
+            import torch
+            if not torch.cuda.is_available():
+                raise RuntimeError(
+                    f"Self-taught fine-tuning of {parameter_count:,} parameters is disabled on CPU. "
+                    "The current verified model remains active; CUDA with sufficient free memory is required."
+                )
+            free_memory, _ = torch.cuda.mem_get_info()
+            required_memory = parameter_count * 20 + 2 * 1024**3
+            if free_memory < required_memory:
+                raise RuntimeError(
+                    f"Insufficient free CUDA memory for safe self-taught fine-tuning: "
+                    f"{free_memory:,} bytes available, approximately {required_memory:,} bytes required."
+                )
         tokenizer_path = base_artifact / "tokenizer.model"
     else:
         tokenizer_prefix = cycle / "tokenizer" / "arachne"
