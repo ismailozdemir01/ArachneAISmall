@@ -123,19 +123,30 @@ def _fetch_page(language: str) -> dict[str, Any] | None:
     if not isinstance(revision_id, int):
         return None
 
-    query = urllib.parse.urlencode({
+    category_params: dict[str, str] = {
         "action": "query", "format": "json", "prop": "categories",
         "cllimit": "max", "titles": title,
-    })
-    categories_response = _get_json(f"https://{host}/w/api.php?{query}")
-    pages = categories_response.get("query", {}).get("pages", {})
+    }
     categories: list[dict[str, Any]] = []
-    if isinstance(pages, dict):
-        for page_data in pages.values():
-            if isinstance(page_data, dict) and isinstance(page_data.get("categories"), list):
-                categories.extend(page_data["categories"])
-    if _is_living_person_category(language, categories):
-        return None
+    for category_page in range(10):
+        query = urllib.parse.urlencode(category_params)
+        categories_response = _get_json(f"https://{host}/w/api.php?{query}")
+        pages = categories_response.get("query", {}).get("pages", {})
+        if isinstance(pages, dict):
+            for page_data in pages.values():
+                if isinstance(page_data, dict) and isinstance(page_data.get("categories"), list):
+                    categories.extend(page_data["categories"])
+        if _is_living_person_category(language, categories):
+            return None
+        continuation = categories_response.get("continue")
+        if not isinstance(continuation, dict):
+            break
+        if category_page == 9:
+            LOGGER.warning("Skipped %s:%s because category metadata exceeded the safety page limit.", language, title)
+            return None
+        if not all(isinstance(key, str) and isinstance(value, str) for key, value in continuation.items()):
+            return None
+        category_params.update(continuation)
 
     license_title, license_url = approved
     page_url = f"https://{host}/wiki/{encoded_title}"
