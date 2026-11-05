@@ -185,10 +185,10 @@ class ModuleRegistry:
                          source_sha256: str | None = None) -> dict[str, Any]:
         module = validate_module(spec)
         if source != "self-generated":
-            source = _safe_url(source)
             if (not isinstance(source_sha256, str)
                     or not re.fullmatch(r"[0-9a-f]{64}", source_sha256)):
                 raise ModuleRejected("Discovered modules require a verified source SHA-256.")
+            source = _safe_url(source)
         elif source_sha256 is not None:
             raise ModuleRejected("Self-generated modules cannot claim an external source digest.")
 
@@ -298,7 +298,9 @@ class ModuleRegistry:
         if not isinstance(module_id, str) or not _MODULE_ID.fullmatch(module_id):
             raise ValueError("Invalid module id.")
         pointer_path = self.active / f"{module_id}.current.json"
-        if pointer_path.is_symlink() or not pointer_path.is_file():
+        if pointer_path.is_symlink():
+            raise ModuleRejected("Active module pointer cannot be a symbolic link.")
+        if not pointer_path.is_file():
             raise FileNotFoundError(f"No active module: {module_id}")
         pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
         digest = pointer.get("sha256")
