@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hmac
 import logging
 import os
@@ -181,6 +182,24 @@ def _api_token() -> str | None:
     return token or None
 
 
+async def _module_discovery_loop(registry_urls: list[str]) -> None:
+    try:
+        interval = int(os.environ.get("ARACHNE_SMALL_MODULE_SCAN_INTERVAL", "3600"))
+    except ValueError:
+        interval = 3600
+    interval = max(300, min(interval, 86_400))
+    while True:
+        try:
+            discovered = await asyncio.to_thread(
+                _module_registry().discover, registry_urls
+            )
+            if discovered:
+                LOGGER.info("Verified and activated %d discovered Arachne modules.", len(discovered))
+        except Exception:
+            LOGGER.exception("Arachne module discovery cycle failed; active modules remain unchanged.")
+        await asyncio.sleep(interval)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if os.environ.get("ARACHNE_SMALL_ALLOW_REMOTE") == "1":
@@ -194,7 +213,20 @@ async def lifespan(app: FastAPI):
             LOGGER.info("Loaded verified Arachne Small artifact from %s", artifact)
         except Exception:
             LOGGER.exception("Arachne Small artifact could not be loaded")
-    yield
+    raw_registries = os.environ.get("ARACHNE_SMALL_MODULE_REGISTRIES", "")
+    registry_urls = [item.strip() for item in raw_registries.split(";") if item.strip()]
+    discovery_task = None
+    if registry_urls:
+        discovery_task = asyncio.create_task(_module_discovery_loop(registry_urls))
+    try:
+        yield
+    finally:
+        if discovery_task is not None:
+            discovery_task.cancel()
+            try:
+                await discovery_task
+            except asyncio.CancelledError:
+                pass
 
 
 app = FastAPI(
