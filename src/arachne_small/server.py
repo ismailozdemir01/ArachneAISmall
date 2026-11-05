@@ -21,6 +21,7 @@ from . import __version__
 from .artifacts import load_model, discover_model_artifact
 from .learning import FeedbackStore, run_learning_cycle, _read_release_version
 from .modules import ModuleRegistry, ModuleRejected
+from .self_taught import WikimediaRateLimited
 
 LOGGER = logging.getLogger("arachne_small.server")
 SELF_TAUGHT_STATUS = {"enabled": False, "state": "disabled", "last_cycle": None, "last_error": None}
@@ -328,6 +329,14 @@ async def _self_taught_loop() -> None:
                             result["cycle_id"])
         except asyncio.CancelledError:
             raise
+        except WikimediaRateLimited as exc:
+            SELF_TAUGHT_STATUS.update({"state": "error_retry_scheduled", "last_error": "Wikimedia rate limit; retry scheduled"})
+            LOGGER.warning(
+                "Wikimedia rate limit reached; pausing self-taught acquisition for %.0f seconds. "
+                "The active model remains unchanged.",
+                exc.retry_after_seconds,
+            )
+            next_delay = max(900.0, exc.retry_after_seconds)
         except Exception as exc:
             SELF_TAUGHT_STATUS.update({"state": "error_retry_scheduled", "last_error": f"{type(exc).__name__}; see server log"})
             LOGGER.exception("Self-taught cycle failed; the active model remains unchanged.")
