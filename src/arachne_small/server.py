@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hmac
 import logging
+import math
 import os
 import threading
 import uuid
@@ -236,7 +237,8 @@ async def _automatic_learning_loop() -> None:
         LOGGER.exception("Invalid automatic-learning configuration; worker is disabled.")
         return
     interval = max(1800, min(interval, 604800))
-    if not 1 <= min_rating <= 5 or max_loss_regression < 0 or batch_size < 1 or max_batches < 1:
+    if (not 1 <= min_rating <= 5 or not math.isfinite(max_loss_regression)
+            or max_loss_regression < 0 or batch_size < 1 or max_batches < 1):
         LOGGER.error("Automatic-learning limits are invalid; worker is disabled.")
         return
 
