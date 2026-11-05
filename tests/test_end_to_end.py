@@ -84,6 +84,9 @@ def test_full_verified_learning_release_and_module_activation_flow(tmp_path, mon
     token = "integration-test-token-" + ("x" * 40)
     monkeypatch.setenv("ARACHNE_SMALL_API_TOKEN", token)
     monkeypatch.delenv("ARACHNE_SMALL_ALLOW_REMOTE", raising=False)
+    monkeypatch.delenv("ARACHNE_SMALL_MODULE_REGISTRIES", raising=False)
+    monkeypatch.delenv("ARACHNE_SMALL_AUTO_LEARN", raising=False)
+    monkeypatch.delenv("ARACHNE_SMALL_ARTIFACT", raising=False)
     module_dir = tmp_path / "modules"
     monkeypatch.setenv("ARACHNE_SMALL_MODULE_DIR", str(module_dir))
     module_spec = {
