@@ -36,6 +36,9 @@ def _safe_url(value: str) -> str:
             or parsed.username or parsed.password or parsed.port not in (None, 443)
             or parsed.query or parsed.fragment):
         raise ModuleRejected("Only HTTPS raw.githubusercontent.com module sources are allowed.")
+    path_parts = parsed.path.strip("/").split("/")
+    if (len(path_parts) < 4 or not re.fullmatch(r"[0-9a-fA-F]{40}", path_parts[2])):
+        raise ModuleRejected("Module sources must use immutable 40-character Git commit URLs.")
     return value
 
 
@@ -148,7 +151,11 @@ def execute_module(spec: dict[str, Any], text: str) -> str:
         elif name == "append":
             result += operation["value"]
         elif name == "replace_literal":
-            result = result.replace(operation["old"], operation["new"])
+            old, new = operation["old"], operation["new"]
+            projected_size = len(result) + result.count(old) * (len(new) - len(old))
+            if projected_size > 100_000:
+                raise ValueError("Module output exceeds the 100000-character limit.")
+            result = result.replace(old, new)
         if len(result) > 100_000:
             raise ValueError("Module output exceeds the 100000-character limit.")
     return result
@@ -202,7 +209,14 @@ class ModuleRegistry:
         }
         digest = hashlib.sha256(_json_bytes(document)).hexdigest()
         candidate_path = self.candidates / f"{digest}.json"
-        self._write_new(candidate_path, _json_bytes(document))
+        payload = _json_bytes(document)
+        if candidate_path.is_symlink():
+            raise ModuleRejected("Module candidate cannot be a symbolic link.")
+        if candidate_path.exists():
+            if candidate_path.read_bytes() != payload:
+                raise ModuleRejected("Existing candidate path contains different content.")
+        else:
+            self._write_new(candidate_path, payload)
         return {"id": module["id"], "version": module["version"],
                 "sha256": digest, "state": "verified_candidate",
                 "tests_passed": len(module["tests"]), "source": source}
@@ -211,6 +225,7 @@ class ModuleRegistry:
         if not isinstance(registry_urls, list) or len(registry_urls) > 20:
             raise ValueError("Provide at most 20 trusted registry URLs.")
         discovered = []
+        total_entries = 0
         for registry_url in registry_urls:
             raw_index = _fetch_json(registry_url, _MAX_REGISTRY_BYTES)
             try:
@@ -222,6 +237,9 @@ class ModuleRegistry:
             entries = index["modules"]
             if not isinstance(entries, list) or len(entries) > 100:
                 raise ModuleRejected("A registry index must contain at most 100 module entries.")
+            total_entries += len(entries)
+            if total_entries > 100:
+                raise ModuleRejected("A discovery cycle may process at most 100 modules across all registries.")
             for entry in entries:
                 if not isinstance(entry, dict) or set(entry) != {"url", "sha256"}:
                     raise ModuleRejected("Registry entries must contain only url and sha256.")
