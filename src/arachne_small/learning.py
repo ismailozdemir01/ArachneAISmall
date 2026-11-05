@@ -400,6 +400,8 @@ def promote_candidate(candidate: str | Path, baseline: str | Path,
                 source_config["tokenizer"]["file"],
                 source_config["weights"]["file"],
             }
+            if (source / "arachne_small.pt").is_file() and not (source / "arachne_small.pt").is_symlink():
+                inference_files.add("arachne_small.pt")
             for filename in inference_files:
                 shutil.copyfile(source / filename, staging / filename)
                 if os.name == "posix":
