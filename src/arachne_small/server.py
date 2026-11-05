@@ -301,8 +301,8 @@ async def _self_taught_loop() -> None:
         LOGGER.exception("Invalid self-taught configuration; worker is disabled.")
         return
     interval = max(1800, min(interval, 604800))
-    if not 10 <= articles <= 500:
-        LOGGER.error("Self-taught article limit must be between 10 and 500; worker is disabled.")
+    if not 20 <= articles <= 500:
+        LOGGER.error("Self-taught article limit must be between 20 and 500; worker is disabled.")
         return
     from .self_taught import run_self_taught_cycle
     SELF_TAUGHT_STATUS.update({"enabled": True, "state": "acquiring_and_training", "last_error": None})
