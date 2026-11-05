@@ -178,8 +178,8 @@ def acquire_wikipedia_corpus(
     seen_database: str | Path | None = None,
 ) -> dict[str, Any]:
     """Acquire only per-page CC BY-SA 3.0/4.0 Wikipedia extracts with provenance."""
-    if isinstance(articles_per_language, bool) or not isinstance(articles_per_language, int) or not 10 <= articles_per_language <= 500:
-        raise ValueError("articles_per_language must be between 10 and 500.")
+    if isinstance(articles_per_language, bool) or not isinstance(articles_per_language, int) or not 20 <= articles_per_language <= 500:
+        raise ValueError("articles_per_language must be between 20 and 500.")
     if not isinstance(request_delay_seconds, (int, float)) or request_delay_seconds < 1.0:
         raise ValueError("Wikimedia request delay must be at least one second.")
     target = Path(output_jsonl).expanduser()
@@ -231,7 +231,7 @@ def acquire_wikipedia_corpus(
                     except (OSError, ValueError, KeyError, TypeError, urllib.error.URLError) as exc:
                         LOGGER.warning("Wikimedia %s acquisition attempt %d failed: %s", language, attempts, exc)
                     time.sleep(float(request_delay_seconds))
-        if min(counts.values()) < 10:
+        if min(counts.values()) < 20:
             raise RuntimeError(
                 f"Insufficient licensed documents were acquired: {counts}. "
                 "No training cycle was started."
@@ -342,7 +342,7 @@ def run_self_taught_cycle(
     split_dir = cycle / "split"
     dataset_manifest = prepare_corpus(
         str(raw_path), str(split_dir), text_field="text",
-        validation_fraction=0.1, seed=1337,
+        validation_fraction=0.2, seed=1337,
         source="Wikimedia Wikipedia per-page REST metadata; see raw JSONL provenance",
         license_name="Mixed per-page CC BY-SA 3.0/4.0; exact page license and attribution are recorded per document.",
     )
