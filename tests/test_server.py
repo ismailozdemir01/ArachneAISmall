@@ -4,6 +4,12 @@ from fastapi.testclient import TestClient
 from arachne_small.server import app, runtime
 
 
+@pytest.fixture(autouse=True)
+def disable_background_self_taught_worker_in_api_tests(monkeypatch):
+    # API tests must not start a real network crawler or model-training job.
+    monkeypatch.setenv("ARACHNE_SMALL_SELF_TAUGHT", "0")
+
+
 def test_health_endpoint_reports_service_process():
     with TestClient(app) as client:
         response = client.get("/api/health")
