@@ -170,3 +170,17 @@ def test_robots_not_found_is_treated_as_no_published_policy(monkeypatch):
 
     monkeypatch.setattr(researcher, "_request", missing_robots)
     assert researcher._allowed_by_robots("https://example.org/article")
+
+def test_global_research_normalizes_legacy_http_creative_commons_license_uri():
+    assert GlobalWebResearch._approved_license(
+        ["http://creativecommons.org/licenses/by/4.0/"],
+        "https://www.ebi.ac.uk/article",
+    ) == ("4.0", "https://creativecommons.org/licenses/by/4.0/")
+    assert GlobalWebResearch._approved_license(
+        ["http://creativecommons.org/licenses/by-nc/4.0/"],
+        "https://www.ebi.ac.uk/article",
+    ) is None
+    assert GlobalWebResearch._approved_license(
+        ["http://not-creativecommons.org/licenses/by/4.0/"],
+        "https://www.ebi.ac.uk/article",
+    ) is None
