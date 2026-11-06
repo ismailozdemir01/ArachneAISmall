@@ -289,22 +289,24 @@ def acquire_wikipedia_corpus(
                     except (OSError, ValueError, KeyError, TypeError, AttributeError, urllib.error.URLError) as exc:
                         LOGGER.warning("Wikimedia %s acquisition attempt %d failed: %s", language, attempts, exc)
                     time.sleep(float(request_delay_seconds))
-        if records < articles_per_language:
+        if records == 0:
             if rate_limits:
                 raise max(rate_limits.values(), key=lambda error: error.retry_after_seconds)
             raise RuntimeError(
-                f"Insufficient licensed documents were acquired: {counts}. "
-                f"At least {articles_per_language} documents are required to start training."
+                f"No licensed documents were acquired: {counts}. "
+                "The current cycle must remain research-only."
             )
         if database is not None:
             database.commit()
         return {
             "records": records,
             "by_language": counts,
+            "complete": all(count >= articles_per_language for count in counts.values()),
             "sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
             "source": "Wikimedia Wikipedia REST and Action APIs",
             "license_policy": sorted(_ALLOWED_LICENSES),
             "output": str(target),
+            "rate_limited_languages": sorted(rate_limits),
         }
     except Exception:
         if database is not None:
