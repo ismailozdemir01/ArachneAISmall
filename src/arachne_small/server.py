@@ -325,6 +325,7 @@ async def _self_taught_loop() -> None:
                     "last_cycle": result["cycle_id"],
                     "last_error": None,
                     "last_research": result.get("acquisition"),
+                    "last_training": {"promoted": False, "reason": result["reason"]},
                 })
                 LOGGER.info(
                     "Research cycle %s indexed %d pages (%d eligible for training); active model unchanged.",
