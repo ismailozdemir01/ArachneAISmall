@@ -24,7 +24,7 @@ from .modules import ModuleRegistry, ModuleRejected
 from .self_taught import WikimediaRateLimited
 
 LOGGER = logging.getLogger("arachne_small.server")
-SELF_TAUGHT_STATUS = {"enabled": False, "state": "disabled", "last_cycle": None, "last_error": None}
+SELF_TAUGHT_STATUS = {"enabled": False, "state": "disabled", "last_cycle": None, "last_error": None, "last_research": None, "last_training": None}
 FRONTEND_DIR = Path(__file__).with_name("frontend")
 MAX_PROMPT_CHARS = 20_000
 
@@ -334,10 +334,30 @@ async def _self_taught_loop() -> None:
                 )
             elif result.get("promoted") and version:
                 await asyncio.to_thread(runtime.activate, str(Path(os.environ.get("ARACHNE_SMALL_RELEASE_DIR", "artifacts/releases")) / version))
-                SELF_TAUGHT_STATUS.update({"state": "waiting_for_next_cycle", "last_cycle": result["cycle_id"], "last_error": None})
+                SELF_TAUGHT_STATUS.update({
+                    "state": "waiting_for_next_cycle",
+                    "last_cycle": result["cycle_id"],
+                    "last_error": None,
+                    "last_research": result.get("acquisition"),
+                    "last_training": {
+                        "promoted": True,
+                        "release": version,
+                        "bootstrap": result.get("bootstrap", False),
+                        "parameter_count": result.get("parameter_count"),
+                        "training_steps": result.get("training_steps"),
+                        "validation_loss": result.get("validation_loss"),
+                    },
+                })
                 LOGGER.info("Self-taught cycle %s promoted and activated model release %s (%s parameters).",
                             result["cycle_id"], version, result["parameter_count"])
             else:
+                SELF_TAUGHT_STATUS.update({
+                    "state": "candidate_not_promoted",
+                    "last_cycle": result.get("cycle_id"),
+                    "last_error": None,
+                    "last_research": result.get("acquisition"),
+                    "last_training": {"promoted": False, "reason": result.get("reason", "promotion_not_completed")},
+                })
                 LOGGER.info("Self-taught cycle %s completed without promotion; active model is unchanged.",
                             result["cycle_id"])
         except asyncio.CancelledError:
