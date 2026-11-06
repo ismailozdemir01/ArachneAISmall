@@ -28,6 +28,32 @@ def test_global_research_accepts_bing_rss_search_results(monkeypatch):
     ]
 
 
+def test_global_research_distributes_queries_across_all_configured_providers(monkeypatch):
+    endpoints = (
+        "https://search-one.example/rss",
+        "https://search-two.example/rss",
+        "https://search-three.example/rss",
+    )
+    monkeypatch.setenv("ARACHNE_SEARCH_ENDPOINTS", "||".join(endpoints))
+    researcher = GlobalWebResearch(max_pages=3)
+    requested = []
+
+    def request(url, _accept="text/html,application/xhtml+xml"):
+        requested.append(url.split("/", 3)[2])
+        host = requested[-1]
+        payload = (
+            '<?xml version="1.0"?><rss><channel><item><link>'
+            f'https://{host}/result</link></item></channel></rss>'
+        ).encode()
+        return payload, url, "application/rss+xml"
+
+    monkeypatch.setattr(researcher, "_request", request)
+    results = researcher._search("distributed discovery")
+
+    assert requested == ["search-one.example", "search-two.example", "search-three.example"]
+    assert len(results) == 3
+
+
 def test_global_research_accepts_only_explicit_allowlisted_reuse_licenses():
     assert GlobalWebResearch._approved_license(
         ["https://creativecommons.org/licenses/by/4.0/"], "https://example.org/page"
