@@ -307,6 +307,10 @@ def acquire_wikipedia_corpus(
             "license_policy": sorted(_ALLOWED_LICENSES),
             "output": str(target),
             "rate_limited_languages": sorted(rate_limits),
+            "retry_after_seconds": max(
+                (error.retry_after_seconds for error in rate_limits.values()),
+                default=0.0,
+            ),
         }
     except Exception:
         if database is not None:
@@ -492,6 +496,7 @@ def run_self_taught_cycle(
                 "fallback_source": wikipedia["source"],
                 "fallback_records": wikipedia["records"],
                 "fallback_by_language": wikipedia["by_language"],
+                "retry_after_seconds": wikipedia.get("retry_after_seconds", 0.0),
                 "global_search": {
                     "records": global_records,
                     "research_pages": acquisition.get("research_pages", 0),
