@@ -188,6 +188,9 @@ def test_acquisition_skips_rate_limited_language_and_uses_available_language(tmp
 
     assert result["records"] == 20
     assert result["by_language"] == {"tr": 0, "en": 20}
+    assert result["complete"] is False
+    assert result["rate_limited_languages"] == ["tr"]
+    assert result["retry_after_seconds"] == 120.0
     records = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
     assert all(record["provenance"]["language"] == "en" for record in records)
 
