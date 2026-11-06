@@ -43,6 +43,51 @@ def test_living_people_categories_are_excluded_in_both_languages():
     assert not _is_living_person_category("en", [{"title": "Category:Ancient historians"}])
 
 
+def test_self_taught_cycle_keeps_global_research_when_wikimedia_has_no_licensed_data(tmp_path, monkeypatch):
+    import arachne_small.self_taught as self_taught
+
+    def empty_global_acquisition(_researcher, output_jsonl, **_kwargs):
+        from pathlib import Path
+        Path(output_jsonl).parent.mkdir(parents=True, exist_ok=True)
+        Path(output_jsonl).write_text("", encoding="utf-8")
+        return {
+            "records": 0,
+            "research_only": True,
+            "research_status": "research_only_no_licensed_training_data",
+            "research_pages": 12,
+            "unlicensed_pages": 12,
+            "search_results": 60,
+            "unique_domains": 4,
+            "domains": ["a.example", "b.example", "c.example", "d.example"],
+        }
+
+    monkeypatch.setattr(
+        self_taught.GlobalWebResearch,
+        "acquire",
+        empty_global_acquisition,
+    )
+    monkeypatch.setattr(
+        self_taught,
+        "acquire_wikipedia_corpus",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("No licensed documents were acquired: {'tr': 0, 'en': 0}.")
+        ),
+    )
+
+    result = self_taught.run_self_taught_cycle(
+        work_root=tmp_path / "data",
+        artifact_root=tmp_path / "artifacts",
+        release_root=tmp_path / "releases",
+        articles_per_language=20,
+    )
+
+    assert result["research_only"] is True
+    assert result["promoted"] is False
+    assert result["reason"] == "research_only_no_licensed_training_data"
+    assert result["acquisition"]["research_pages"] == 12
+    assert result["active_model_unchanged"] is True
+
+
 def test_self_taught_cycle_waits_for_a_viable_licensed_corpus(tmp_path, monkeypatch):
     import arachne_small.self_taught as self_taught
 
