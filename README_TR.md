@@ -2,7 +2,7 @@
 
 **ArachneAISmall, ArachneAI ekosistemi içinde global web araştırması yapabilen, çok kaynaklı bilgiyi değerlendiren ve uygun verilerle kendi dil modelini güvenli biçimde geliştiren bağımsız yapay zekâ sistemidir.** Veri yönetişimi, tokenizer eğitimi, decoder-only Transformer eğitimi, doğrulanabilir model paketleri, yerel çıkarım, açık rızaya dayalı geri bildirim, kontrollü sürekli öğrenme ve güvenlik sınırları belirlenmiş bildirimsel modül sistemini tek bir geliştirme hattında birleştirir.
 
-- **Hedef diller:** Türkçe ve İngilizce
+- **Araştırma kapsamı:** Çok dilli global web; mevcut model hedef dilleri Türkçe ve İngilizce
 - **Hedef mimari ölçeği:** 1.5B sınıfı; otomatik ilk kurulum modeli yaklaşık 1.8M parametreli bootstrap yapılandırmasıdır
 - **Yapılandırılmış parametre sayısı:** 1.523.714.048
 - **Başlatma:** Rastgele başlangıç ağırlıkları; temel model olarak üçüncü taraf önceden eğitilmiş ağırlık kullanılmaz
