@@ -12,7 +12,7 @@
 
 ## Release status
 
-The repository contains model and training implementation code; trained weights are generated locally and are not committed. Running `arachne-small serve` starts the self-taught worker, which acquires page-level license-checked Turkish/English Wikipedia extracts and trains a small bootstrap model. A local run writes `arachne_small.pt` at initialization, updates it at configured save intervals, and marks it `trained` only after final validation. The bootstrap is not the 1.5B target model. A configuration describing a 1.5B-parameter model is not evidence that the model has been trained.
+The repository contains model and training implementation code; trained weights are generated locally and are not committed. Running `arachne-small serve` starts the global research worker, which discovers public HTTPS sources across domains, records source provenance and trains only on pages with explicitly approved reuse licenses. A local run writes `arachne_small.pt` at initialization, updates it at configured save intervals, and marks it `trained` only after final validation. The bootstrap is not the 1.5B target model. A configuration describing a 1.5B-parameter model is not evidence that the model has been trained.
 
 A trained release must include actual training provenance, dataset/license records, completed-step count, validation metrics, tokenizer checksum, model-weight checksum, and hardware/training details. No quality, safety, reasoning, multilinguality, or benchmark claim should be made until measured on a documented evaluation suite.
 
@@ -46,4 +46,4 @@ Only use training data with documented permission and a valid training-use basis
 
 The automatic bootstrap model uses a 128-dimensional hidden size, 4 Transformer layers, 4 attention heads and a 256-token context. Its exact parameter count depends on the tokenizer vocabulary (configured target 4,000). It is intended to establish a real end-to-end training loop, not to claim production assistant capability or 1.5B-scale quality. The worker repeats acquisition and candidate training every six hours by default and promotes only candidates that do not regress on the cycle's held-out validation set.
 
-The training corpus is acquired from Wikipedia pages whose REST metadata reports CC BY-SA 3.0 or 4.0. Per-page attribution and revision metadata are retained locally. The automated filter is not a legal determination; see [Dataset Policy](DATASET_POLICY.md) and [Self-Taught Learning](SELF_TAUGHT.md).
+The training corpus is acquired from public web pages whose HTML declares an exact CC0, CC BY or CC BY-SA license URL on the crawler's allowlist. Canonical URL, domain, license, retrieval time and content hash are retained locally. Discovered pages without an approved license are excluded from gradient training. The automated filter is not a legal determination; see [Dataset Policy](DATASET_POLICY.md) and [Self-Taught Learning](SELF_TAUGHT.md).
