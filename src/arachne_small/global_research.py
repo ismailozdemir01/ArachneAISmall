@@ -13,6 +13,7 @@ import urllib.error
 import urllib.parse
 import urllib.robotparser
 import urllib.request
+import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
@@ -268,6 +269,97 @@ class GlobalWebResearch:
             },
         }
 
+    @staticmethod
+    def _xml_local_name(tag: str) -> str:
+        return tag.rsplit("}", 1)[-1].casefold()
+
+    def _europe_pmc_records(self, limit: int) -> list[dict[str, Any]]:
+        """Fetch full text only from Europe PMC articles with an explicit reusable CC license."""
+        if limit <= 0:
+            return []
+        query = urllib.parse.urlencode({
+            "query": "OPEN_ACCESS:Y AND LICENSE:cc",
+            "format": "json",
+            "resultType": "core",
+            "pageSize": str(min(max(limit * 3, 25), 100)),
+        })
+        endpoint = "https://www.ebi.ac.uk/europepmc/webservices/rest/search?" + query
+        payload, _, content_type = self._request(endpoint, "application/json")
+        if "json" not in content_type:
+            raise ValueError("Europe PMC search did not return JSON.")
+        data = json.loads(payload.decode("utf-8"))
+        results = data.get("resultList", {}).get("result", [])
+        records: list[dict[str, Any]] = []
+        for item in results:
+            if len(records) >= limit:
+                break
+            pmcid = str(item.get("pmcid") or "").strip()
+            if not re.fullmatch(r"PMC[0-9]+", pmcid):
+                continue
+            fulltext_url = f"https://www.ebi.ac.uk/europepmc/webservices/rest/{pmcid}/fullTextXML"
+            try:
+                xml_payload, final_url, xml_type = self._request(fulltext_url, "application/xml,text/xml")
+                if "xml" not in xml_type:
+                    continue
+                if b"<!DOCTYPE" in xml_payload.upper() or b"<!ENTITY" in xml_payload.upper():
+                    LOGGER.warning("Rejected XML with a DTD/entity declaration from Europe PMC: %s", pmcid)
+                    continue
+                root = ET.fromstring(xml_payload)
+            except (OSError, ValueError, ET.ParseError, urllib.error.URLError) as exc:
+                LOGGER.debug("Europe PMC full-text retrieval failed for %s: %s", pmcid, exc)
+                continue
+
+            license_urls: list[str] = []
+            for node in root.iter():
+                if self._xml_local_name(node.tag) == "license":
+                    for key, value in node.attrib.items():
+                        if self._xml_local_name(key) == "href" and value:
+                            license_urls.append(value)
+            license_data = self._approved_license(license_urls, final_url)
+            if license_data is None:
+                continue
+
+            title_parts: list[str] = []
+            text_parts: list[str] = []
+            for node in root.iter():
+                local = self._xml_local_name(node.tag)
+                if local == "article-title":
+                    value = " ".join("".join(node.itertext()).split())
+                    if value:
+                        title_parts.append(value)
+                elif local == "p":
+                    value = " ".join("".join(node.itertext()).split())
+                    if value:
+                        text_parts.append(value)
+            title = (title_parts[0] if title_parts else str(item.get("title") or "")).strip()[:300]
+            text = " ".join(text_parts)
+            if len(text) < MIN_TEXT_CHARS or len(text) > MAX_TEXT_CHARS or SECRET_PATTERN.search(text):
+                continue
+            canonical = f"https://europepmc.org/articles/{pmcid}"
+            digest = hashlib.sha256((canonical + "\\n" + text).encode("utf-8")).hexdigest()
+            records.append({
+                "text": text,
+                "provenance": {
+                    "source": "Europe PMC Open Access full text",
+                    "title": title,
+                    "url": canonical,
+                    "domain": "europepmc.org",
+                    "license": license_data[0],
+                    "license_url": license_data[1],
+                    "training_eligible": True,
+                    "retrieved_at": int(time.time()),
+                    "content_sha256": digest,
+                    "quality_signals": {
+                        "word_count": len(text.split()),
+                        "title_present": bool(title),
+                        "explicit_reuse_license": True,
+                        "robots_allowed": True,
+                        "repository_license_verified": True,
+                    },
+                },
+            })
+        return records
+
     def acquire(self, output_jsonl: str | Path, *, queries: list[str] | None = None, seen_database: str | Path | None = None) -> dict[str, Any]:
         target = Path(output_jsonl).expanduser()
         if target.is_symlink() or target.exists():
@@ -372,6 +464,48 @@ class GlobalWebResearch:
                                 (digest, canonical_url, int(time.time())),
                             )
                         accepted += 1
+                    if accepted >= self.max_pages:
+                        break
+            if accepted < self.max_pages:
+                try:
+                    repository_records = self._europe_pmc_records(self.max_pages - accepted)
+                except (OSError, ValueError, RuntimeError, urllib.error.URLError, json.JSONDecodeError) as exc:
+                    errors += 1
+                    repository_records = []
+                    LOGGER.warning("Europe PMC open-access adapter failed: %s", exc)
+                for record in repository_records:
+                    provenance = record["provenance"]
+                    digest = provenance["content_sha256"]
+                    if digest in seen_hashes:
+                        continue
+                    if database is not None and database.execute(
+                        "SELECT 1 FROM seen_sources WHERE content_sha256=?", (digest,)
+                    ).fetchone() is not None:
+                        continue
+                    index_record = {
+                        "title": provenance["title"],
+                        "url": provenance["url"],
+                        "domain": provenance["domain"],
+                        "retrieved_at": provenance["retrieved_at"],
+                        "content_sha256": digest,
+                        "license": provenance["license"],
+                        "license_url": provenance["license_url"],
+                        "training_eligible": True,
+                        "snippet": record["text"][:400],
+                    }
+                    index_output.write(json.dumps(index_record, ensure_ascii=False, allow_nan=False) + "\\n")
+                    output.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + "\\n")
+                    index_output.flush()
+                    output.flush()
+                    seen_hashes.add(digest)
+                    domains.add(provenance["domain"])
+                    accepted += 1
+                    research_pages += 1
+                    if database is not None:
+                        database.execute(
+                            "INSERT INTO seen_sources(content_sha256,url,first_seen) VALUES(?,?,?)",
+                            (digest, provenance["url"], int(time.time())),
+                        )
                     if accepted >= self.max_pages:
                         break
             if database is not None:
