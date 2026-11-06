@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import sqlite3
 import threading
 import time
 import urllib.error
@@ -262,7 +263,7 @@ class GlobalWebResearch:
             },
         }
 
-    def acquire(self, output_jsonl: str | Path, *, queries: list[str] | None = None) -> dict[str, Any]:
+    def acquire(self, output_jsonl: str | Path, *, queries: list[str] | None = None, seen_database: str | Path | None = None) -> dict[str, Any]:
         target = Path(output_jsonl).expanduser()
         if target.is_symlink() or target.exists():
             raise FileExistsError(f"Research output already exists or is a symbolic link: {target}")
@@ -286,6 +287,18 @@ class GlobalWebResearch:
         accepted = 0
         searched = 0
         errors = 0
+        database = None
+        if seen_database is not None:
+            database_path = Path(seen_database).expanduser()
+            if database_path.is_symlink():
+                raise ValueError("Global research deduplication database cannot be a symbolic link.")
+            database_path.parent.mkdir(parents=True, exist_ok=True)
+            database = sqlite3.connect(database_path, timeout=30)
+            database.execute("PRAGMA journal_mode=WAL")
+            database.execute(
+                "CREATE TABLE IF NOT EXISTS seen_sources (url TEXT PRIMARY KEY, content_sha256 TEXT NOT NULL UNIQUE, first_seen INTEGER NOT NULL)"
+            )
+            database.execute("BEGIN IMMEDIATE")
         try:
             with target.open("x", encoding="utf-8", newline="\n") as output:
                 for query in queries:
@@ -312,12 +325,23 @@ class GlobalWebResearch:
                             continue
                         provenance = record["provenance"]
                         digest = provenance["content_sha256"]
+                        canonical_url = provenance["url"]
                         if digest in seen_hashes:
+                            continue
+                        if database is not None and database.execute(
+                            "SELECT 1 FROM seen_sources WHERE url=? OR content_sha256=?",
+                            (canonical_url, digest),
+                        ).fetchone() is not None:
                             continue
                         seen_hashes.add(digest)
                         domains.add(provenance["domain"])
                         output.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + "\n")
                         output.flush()
+                        if database is not None:
+                            database.execute(
+                                "INSERT INTO seen_sources(url,content_sha256,first_seen) VALUES(?,?,?)",
+                                (canonical_url, digest, int(time.time())),
+                            )
                         accepted += 1
                     if accepted >= self.max_pages:
                         break
@@ -326,6 +350,8 @@ class GlobalWebResearch:
                     "Global research found no pages with explicit approved reuse licenses. "
                     "No training data was produced and the active model was not changed."
                 )
+            if database is not None:
+                database.commit()
             return {
                 "records": accepted,
                 "queries": len(queries),
@@ -339,5 +365,10 @@ class GlobalWebResearch:
                 "output": str(target),
             }
         except Exception:
+            if database is not None:
+                database.rollback()
             target.unlink(missing_ok=True)
             raise
+        finally:
+            if database is not None:
+                database.close()
