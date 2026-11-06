@@ -43,6 +43,48 @@ def test_living_people_categories_are_excluded_in_both_languages():
     assert not _is_living_person_category("en", [{"title": "Category:Ancient historians"}])
 
 
+def test_self_taught_cycle_waits_for_a_viable_licensed_corpus(tmp_path, monkeypatch):
+    import arachne_small.self_taught as self_taught
+
+    def insufficient_global_acquisition(_researcher, output_jsonl, **_kwargs):
+        from pathlib import Path
+        Path(output_jsonl).parent.mkdir(parents=True, exist_ok=True)
+        Path(output_jsonl).write_text("", encoding="utf-8")
+        return {
+            "records": 5,
+            "research_only": False,
+            "research_status": "training_corpus_ready",
+            "research_pages": 5,
+            "unlicensed_pages": 0,
+            "unique_domains": 5,
+            "domains": [f"source-{index}.example" for index in range(5)],
+        }
+
+    monkeypatch.setattr(
+        self_taught.GlobalWebResearch,
+        "acquire",
+        insufficient_global_acquisition,
+    )
+    monkeypatch.setattr(
+        self_taught,
+        "acquire_wikipedia_corpus",
+        lambda *_args, **_kwargs: {"records": 0, "by_language": {"tr": 0, "en": 0}},
+    )
+
+    result = self_taught.run_self_taught_cycle(
+        work_root=tmp_path / "data",
+        artifact_root=tmp_path / "artifacts",
+        release_root=tmp_path / "releases",
+        articles_per_language=20,
+    )
+
+    assert result["research_only"] is True
+    assert result["promoted"] is False
+    assert result["reason"] == "insufficient_licensed_training_corpus"
+    assert result["acquisition"]["minimum_training_documents"] == 20
+    assert result["active_model_unchanged"] is True
+
+
 def test_bootstrap_model_is_real_small_transformer_configuration(tmp_path):
     config = _bootstrap_config(1024, tmp_path / "run")
     assert config.model.vocab_size == 1024
