@@ -1,6 +1,6 @@
 # ArachneAISmall
 
-**ArachneAISmall, ArachneAI ekosistemi içinde sıfırdan Türkçe–İngilizce dil modeli geliştirme ve eğitim projesidir.** Veri yönetişimi, tokenizer eğitimi, decoder-only Transformer eğitimi, doğrulanabilir model paketleri, yerel çıkarım, açık rızaya dayalı geri bildirim, kontrollü sürekli öğrenme ve güvenlik sınırları belirlenmiş bildirimsel modül sistemini tek bir geliştirme hattında birleştirir.
+**ArachneAISmall, ArachneAI ekosistemi içinde global web araştırması yapabilen, çok kaynaklı bilgiyi değerlendiren ve uygun verilerle kendi dil modelini güvenli biçimde geliştiren bağımsız yapay zekâ sistemidir.** Veri yönetişimi, tokenizer eğitimi, decoder-only Transformer eğitimi, doğrulanabilir model paketleri, yerel çıkarım, açık rızaya dayalı geri bildirim, kontrollü sürekli öğrenme ve güvenlik sınırları belirlenmiş bildirimsel modül sistemini tek bir geliştirme hattında birleştirir.
 
 - **Hedef diller:** Türkçe ve İngilizce
 - **Hedef mimari ölçeği:** 1.5B sınıfı; otomatik ilk kurulum modeli yaklaşık 1.8M parametreli bootstrap yapılandırmasıdır
@@ -11,7 +11,7 @@
 
 [🇬🇧 English README](README.md) · [Kurulum ve çalıştırma kılavuzu](KURULUM.md)
 
-> **Self-taught çalışma şekli:** `arachne-small serve` arka planda Türkçe ve İngilizce Wikipedia sayfalarını sayfa bazında lisans kontrolüyle toplar, tokenizer/modeli sıfırdan eğitir ve `arachne_small.pt` üretir. İlk model küçük bir bootstrap modelidir; 1.5B değildir. Eğitim ve doğrulama tamamlanmadan model hazır sayılmaz. Süreç ve sınırlar için [Self-Taught](docs/SELF_TAUGHT.md) belgesine bakın.
+ > **Self-taught çalışma şekli:** `arachne-small serve` global web araması ve çok alanlı HTTPS taraması yapar; robots.txt kurallarına uyar, kaynakları ve lisanslarını değerlendirir, yalnızca açıkça izin verilen verileri model eğitimine aktarır. Wikimedia zorunlu veya tek kaynak değildir. İlk model küçük bir bootstrap modelidir; 1.5B değildir. Eğitim ve doğrulama tamamlanmadan model hazır sayılmaz. Süreç ve sınırlar için [Self-Taught](docs/SELF_TAUGHT.md) belgesine bakın.
 
 ---
 
