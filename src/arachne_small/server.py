@@ -319,7 +319,20 @@ async def _self_taught_loop() -> None:
                 articles_per_language=articles,
             )
             version = _read_release_version(Path(os.environ.get("ARACHNE_SMALL_RELEASE_DIR", "artifacts/releases")))
-            if result.get("promoted") and version:
+            if result.get("research_only"):
+                SELF_TAUGHT_STATUS.update({
+                    "state": result["reason"],
+                    "last_cycle": result["cycle_id"],
+                    "last_error": None,
+                    "last_research": result.get("acquisition"),
+                })
+                LOGGER.info(
+                    "Research cycle %s indexed %d pages (%d eligible for training); active model unchanged.",
+                    result["cycle_id"],
+                    result["acquisition"].get("research_pages", 0),
+                    result["acquisition"].get("records", 0),
+                )
+            elif result.get("promoted") and version:
                 await asyncio.to_thread(runtime.activate, str(Path(os.environ.get("ARACHNE_SMALL_RELEASE_DIR", "artifacts/releases")) / version))
                 SELF_TAUGHT_STATUS.update({"state": "waiting_for_next_cycle", "last_cycle": result["cycle_id"], "last_error": None})
                 LOGGER.info("Self-taught cycle %s promoted and activated model release %s (%s parameters).",
