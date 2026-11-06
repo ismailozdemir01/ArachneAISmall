@@ -449,6 +449,15 @@ def run_self_taught_cycle(
     acquisition = GlobalWebResearch(max_pages=min(max(articles_per_language * 2, 40), 500)).acquire(
         raw_path, seen_database=work_root / "seen-global-sources.sqlite3"
     )
+    if acquisition["records"] == 0:
+        return {
+            "cycle_id": cycle_id,
+            "acquisition": acquisition,
+            "research_only": True,
+            "promoted": False,
+            "reason": acquisition["research_status"],
+            "active_model_unchanged": True,
+        }
     split_dir = cycle / "split"
     dataset_manifest = prepare_corpus(
         str(raw_path), str(split_dir), text_field="text",
