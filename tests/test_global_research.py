@@ -1,4 +1,5 @@
 import json
+import urllib.error
 
 from arachne_small.global_research import GlobalWebResearch, _PageParser
 
@@ -86,3 +87,50 @@ def test_global_research_does_not_publish_empty_training_corpus(tmp_path, monkey
     else:
         raise AssertionError("No unlicensed or empty corpus may be published.")
     assert not output.exists()
+
+
+def test_global_research_persists_cross_cycle_source_deduplication(tmp_path, monkeypatch):
+    researcher = GlobalWebResearch(max_pages=2)
+    monkeypatch.setattr(researcher, "_search", lambda _query: ["https://example.org/research"])
+
+    def read_page(url):
+        return {
+            "text": "Licensed scientific research text",
+            "provenance": {
+                "source": "global-web",
+                "title": "Research",
+                "url": url,
+                "domain": "example.org",
+                "license": "4.0",
+                "license_url": "https://creativecommons.org/licenses/by/4.0/",
+                "retrieved_at": 10,
+                "content_sha256": "fixed-content-hash",
+            },
+        }
+
+    monkeypatch.setattr(researcher, "_read_page", read_page)
+    database = tmp_path / "seen.sqlite3"
+    first = researcher.acquire(
+        tmp_path / "first.jsonl", queries=["science"], seen_database=database
+    )
+    assert first["records"] == 1
+    second_path = tmp_path / "second.jsonl"
+    try:
+        researcher.acquire(second_path, queries=["science"], seen_database=database)
+    except RuntimeError as exc:
+        assert "no pages with explicit approved reuse licenses" in str(exc)
+    else:
+        raise AssertionError("Previously ingested sources must not be trained again.")
+    assert not second_path.exists()
+
+
+def test_robots_not_found_is_treated_as_no_published_policy(monkeypatch):
+    researcher = GlobalWebResearch(max_pages=1)
+
+    def missing_robots(_url, _accept):
+        raise urllib.error.HTTPError(
+            "https://example.org/robots.txt", 404, "Not Found", {}, None
+        )
+
+    monkeypatch.setattr(researcher, "_request", missing_robots)
+    assert researcher._allowed_by_robots("https://example.org/article")
