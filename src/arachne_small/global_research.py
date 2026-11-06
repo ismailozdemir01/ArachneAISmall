@@ -374,15 +374,18 @@ class GlobalWebResearch:
                         accepted += 1
                     if accepted >= self.max_pages:
                         break
-            if accepted == 0:
-                raise RuntimeError(
-                    "Global research found no pages with explicit approved reuse licenses. "
-                    "No training data was produced and the active model was not changed."
-                )
             if database is not None:
                 database.commit()
             return {
                 "records": accepted,
+                "research_only": accepted == 0,
+                "research_status": (
+                    "research_only_no_licensed_training_data"
+                    if accepted == 0 and research_pages > 0
+                    else "no_sources_discovered"
+                    if accepted == 0
+                    else "training_corpus_ready"
+                ),
                 "research_pages": research_pages,
                 "unlicensed_pages": unlicensed_pages,
                 "research_index": str(index_target),
