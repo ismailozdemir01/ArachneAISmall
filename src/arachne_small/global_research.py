@@ -346,7 +346,7 @@ class GlobalWebResearch:
                             "training_eligible": provenance["training_eligible"],
                             "snippet": record["text"][:400],
                         }
-                        index_output.write(json.dumps(index_record, ensure_ascii=False, allow_nan=False) + "\\n")
+                        index_output.write(json.dumps(index_record, ensure_ascii=False, allow_nan=False) + "\n")
                         index_output.flush()
                         if not provenance["training_eligible"]:
                             unlicensed_pages += 1
