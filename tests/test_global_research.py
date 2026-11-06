@@ -111,10 +111,10 @@ def test_global_research_persists_cross_cycle_source_deduplication(tmp_path, mon
     monkeypatch.setattr(researcher, "_read_page", read_page)
     database = tmp_path / "seen.sqlite3"
     first = researcher.acquire(
-        tmp_path / "first.jsonl", queries=["science"], seen_database=database
+        tmp_path / "first" / "global.jsonl", queries=["science"], seen_database=database
     )
     assert first["records"] == 1
-    second_path = tmp_path / "second.jsonl"
+    second_path = tmp_path / "second" / "global.jsonl"
     try:
         researcher.acquire(second_path, queries=["science"], seen_database=database)
     except RuntimeError as exc:
