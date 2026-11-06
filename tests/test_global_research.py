@@ -76,18 +76,18 @@ def test_global_research_acquires_multiple_domains_and_records_provenance(tmp_pa
     assert all(row["provenance"]["license_url"].startswith("https://creativecommons.org/") for row in rows)
 
 
-def test_global_research_does_not_publish_empty_training_corpus(tmp_path, monkeypatch):
+def test_global_research_keeps_empty_training_cycle_as_research_result(tmp_path, monkeypatch):
     researcher = GlobalWebResearch(max_pages=2)
     monkeypatch.setattr(researcher, "_search", lambda _query: ["https://example.org/page"])
     monkeypatch.setattr(researcher, "_read_page", lambda _url: None)
-    output = tmp_path / "empty.jsonl"
-    try:
-        researcher.acquire(output, queries=["science"])
-    except RuntimeError as exc:
-        assert "no pages with explicit approved reuse licenses" in str(exc)
-    else:
-        raise AssertionError("No unlicensed or empty corpus may be published.")
-    assert not output.exists()
+    output = tmp_path / "cycle" / "global.jsonl"
+    result = researcher.acquire(output, queries=["science"])
+    index = output.with_name("research-index.jsonl")
+    assert result["records"] == 0
+    assert result["research_status"] == "no_sources_discovered"
+    assert output.is_file()
+    assert index.is_file()
+    assert output.read_text(encoding="utf-8") == ""
 
 
 def test_global_research_persists_cross_cycle_source_deduplication(tmp_path, monkeypatch):
@@ -117,14 +117,48 @@ def test_global_research_persists_cross_cycle_source_deduplication(tmp_path, mon
     )
     assert first["records"] == 1
     second_path = tmp_path / "second" / "global.jsonl"
-    try:
-        researcher.acquire(second_path, queries=["science"], seen_database=database)
-    except RuntimeError as exc:
-        assert "no pages with explicit approved reuse licenses" in str(exc)
-    else:
-        raise AssertionError("Previously ingested sources must not be trained again.")
-    assert not second_path.exists()
+    second = researcher.acquire(second_path, queries=["science"], seen_database=database)
+    assert second["records"] == 0
+    assert second["research_only"] is True
+    assert second_path.is_file()
+    assert second_path.read_text(encoding="utf-8") == ""
 
+
+    
+def test_global_research_preserves_unlicensed_pages_in_research_index(tmp_path, monkeypatch):
+    researcher = GlobalWebResearch(max_pages=2)
+    monkeypatch.setattr(researcher, "_search", lambda _query: ["https://example.org/article"])
+
+    def read_unlicensed(_url):
+        return {
+            "text": "A sufficiently long research excerpt for a local source index.",
+            "provenance": {
+                "source": "global-web",
+                "title": "Research article",
+                "url": "https://example.org/article",
+                "domain": "example.org",
+                "license": None,
+                "license_url": None,
+                "training_eligible": False,
+                "retrieved_at": 20,
+                "content_sha256": "unlicensed-content-hash",
+            },
+        }
+
+    monkeypatch.setattr(researcher, "_read_page", read_unlicensed)
+    output = tmp_path / "cycle" / "global.jsonl"
+    result = researcher.acquire(output, queries=["science"])
+    index_rows = [
+        json.loads(line)
+        for line in output.with_name("research-index.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert result["records"] == 0
+    assert result["research_pages"] == 1
+    assert result["unlicensed_pages"] == 1
+    assert len(index_rows) == 1
+    assert index_rows[0]["training_eligible"] is False
+    assert index_rows[0]["url"] == "https://example.org/article"
+    assert output.read_text(encoding="utf-8") == ""
 
 def test_robots_not_found_is_treated_as_no_published_policy(monkeypatch):
     researcher = GlobalWebResearch(max_pages=1)
