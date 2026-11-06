@@ -471,15 +471,26 @@ def run_self_taught_cycle(
                 raise
             wikipedia = {"records": 0, "by_language": {"tr": 0, "en": 0}}
         if wikipedia["records"] > 0:
-            raw_path = wikipedia_path
+            # Preserve any globally discovered, explicitly licensed records;
+            # the fallback supplements the corpus instead of replacing it.
+            import shutil
+            merged_path = cycle / "merged-licensed-corpus.jsonl"
+            with merged_path.open("x", encoding="utf-8", newline="\\n") as merged:
+                for source_path in (raw_path, wikipedia_path):
+                    with source_path.open("r", encoding="utf-8") as source:
+                        shutil.copyfileobj(source, merged, length=1024 * 1024)
+            raw_path = merged_path
+            global_records = acquisition["records"]
             acquisition = {
                 **acquisition,
-                **wikipedia,
-                "records": wikipedia["records"],
+                "records": global_records + wikipedia["records"],
                 "research_only": False,
-                "research_status": "licensed_wikipedia_corpus_ready",
+                "research_status": "licensed_corpus_ready_with_wikipedia_fallback",
                 "fallback_source": wikipedia["source"],
+                "fallback_records": wikipedia["records"],
+                "fallback_by_language": wikipedia["by_language"],
                 "global_search": {
+                    "records": global_records,
                     "research_pages": acquisition.get("research_pages", 0),
                     "unlicensed_pages": acquisition.get("unlicensed_pages", 0),
                     "search_results": acquisition.get("search_results", 0),
