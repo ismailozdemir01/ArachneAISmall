@@ -449,13 +449,48 @@ def run_self_taught_cycle(
     acquisition = GlobalWebResearch(max_pages=min(max(articles_per_language * 2, 40), 500)).acquire(
         raw_path, seen_database=work_root / "seen-global-sources.sqlite3"
     )
+
+    # Search-engine discovery is broad but cannot guarantee that a cycle finds
+    # machine-readable reuse licenses. Fall back to Wikimedia's per-page license
+    # metadata instead of silently remaining in research-only mode forever.
+    if acquisition["records"] == 0:
+        wikipedia_path = cycle / "wikipedia-licensed.jsonl"
+        try:
+            wikipedia = acquire_wikipedia_corpus(
+                wikipedia_path,
+                articles_per_language=20,
+                request_delay_seconds=1.1,
+                max_attempts_per_language=80,
+                seen_database=work_root / "seen-wikipedia-pages.sqlite3",
+            )
+        except RuntimeError as exc:
+            if "Insufficient licensed documents" not in str(exc):
+                raise
+            wikipedia = {"records": 0, "by_language": {"tr": 0, "en": 0}}
+        if wikipedia["records"] > 0:
+            raw_path = wikipedia_path
+            acquisition = {
+                **acquisition,
+                **wikipedia,
+                "records": wikipedia["records"],
+                "research_only": False,
+                "research_status": "licensed_wikipedia_corpus_ready",
+                "fallback_source": wikipedia["source"],
+                "global_search": {
+                    "research_pages": acquisition.get("research_pages", 0),
+                    "unlicensed_pages": acquisition.get("unlicensed_pages", 0),
+                    "search_results": acquisition.get("search_results", 0),
+                    "unique_domains": acquisition.get("unique_domains", 0),
+                },
+            }
+
     if acquisition["records"] == 0:
         return {
             "cycle_id": cycle_id,
             "acquisition": acquisition,
             "research_only": True,
             "promoted": False,
-            "reason": acquisition["research_status"],
+            "reason": acquisition.get("research_status", "research_only_no_licensed_training_data"),
             "active_model_unchanged": True,
         }
     split_dir = cycle / "split"
