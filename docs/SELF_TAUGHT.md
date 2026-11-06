@@ -27,7 +27,9 @@ The worker never trains on raw chat traffic or its own generated answers. User c
 
 ## Files
 
-- `data/self_taught/cycle-*/global-research.jsonl`: eligible acquired text with per-page provenance.
+- `data/self_taught/cycle-*/global-research.jsonl`: eligible acquired text with per-page provenance, used for model training.
+- `data/self_taught/cycle-*/research-index.jsonl`: source metadata and short excerpts for discovered pages, including pages excluded from training; this is a retrieval/source index, not training data.
+- `data/self_taught/seen-global-sources.sqlite3`: cross-cycle URL and content-hash deduplication for training-eligible pages.
 - `data/self_taught/cycle-*/split/`: per-cycle deduplicated train/validation documents and manifest.
 - `data/self_taught/replay/train.jsonl`: cumulative training replay corpus, including new licensed pages from successful acquisition cycles.
 - `data/self_taught/cycle-*/split/validation.jsonl` and `data/self_taught/cycle-*/validation.bin`: fresh per-cycle holdout, never used for gradient updates.
@@ -55,7 +57,7 @@ The status endpoint `GET /api/status` includes `self_taught.enabled`, `self_taug
 
 ## License and source limitations
 
-The research engine searches across public websites, but it does not assume that public accessibility grants training rights. A page enters the model-training corpus only when its own HTML declares an exact license URL on the explicit CC0, CC BY or CC BY-SA allowlist. Pages without machine-verifiable reuse metadata remain excluded from training. The crawler records the source URL, canonical URL, domain, license and retrieval timestamp.
+The research engine searches across public websites and records source metadata in a local research index, but it does not assume that public accessibility grants training rights. Pages without an approved license can remain as source references/snippets in the research index; they are never copied into the gradient-training corpus. A page enters the model-training corpus only when its own HTML declares an exact license URL on the explicit CC0, CC BY or CC BY-SA allowlist. Pages without machine-verifiable reuse metadata remain excluded from training. The crawler records the source URL, canonical URL, domain, license and retrieval timestamp.
 
 This automated metadata check is a conservative technical filter, not a legal opinion or guarantee that every page element has the same rights status. Before distributing trained weights or a service trained on this corpus, review applicable attribution, ShareAlike, privacy, and model-output obligations for the intended jurisdiction and distribution model.
 ## Operational boundaries
