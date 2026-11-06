@@ -240,8 +240,6 @@ class GlobalWebResearch:
         if len(text) < MIN_TEXT_CHARS or len(text) > MAX_TEXT_CHARS or SECRET_PATTERN.search(text):
             return None
         license_data = self._approved_license(parser.license_urls, final_url)
-        if license_data is None:
-            return None
         canonical = urljoin(final_url, parser.canonical) if parser.canonical else final_url
         if not self._valid_url(canonical):
             canonical = final_url
@@ -256,8 +254,9 @@ class GlobalWebResearch:
                 "title": title,
                 "url": canonical,
                 "domain": host,
-                "license": license_data[0],
-                "license_url": license_data[1],
+                "license": license_data[0] if license_data else None,
+                "license_url": license_data[1] if license_data else None,
+                "training_eligible": license_data is not None,
                 "retrieved_at": int(time.time()),
                 "content_sha256": digest,
                 "quality_signals": {
@@ -287,10 +286,15 @@ class GlobalWebResearch:
         if not queries:
             raise ValueError("At least one non-empty global research query is required.")
         target.parent.mkdir(parents=True, exist_ok=True)
+        index_target = target.with_name("research-index.jsonl")
+        if index_target.is_symlink() or index_target.exists():
+            raise FileExistsError(f"Research index already exists or is a symbolic link: {index_target}")
         seen_urls: set[str] = set()
         seen_hashes: set[str] = set()
         domains: set[str] = set()
         accepted = 0
+        research_pages = 0
+        unlicensed_pages = 0
         searched = 0
         errors = 0
         database = None
@@ -330,6 +334,23 @@ class GlobalWebResearch:
                         if record is None:
                             continue
                         provenance = record["provenance"]
+                        research_pages += 1
+                        index_record = {
+                            "title": provenance["title"],
+                            "url": provenance["url"],
+                            "domain": provenance["domain"],
+                            "retrieved_at": provenance["retrieved_at"],
+                            "content_sha256": provenance["content_sha256"],
+                            "license": provenance["license"],
+                            "license_url": provenance["license_url"],
+                            "training_eligible": provenance["training_eligible"],
+                            "snippet": record["text"][:400],
+                        }
+                        index_output.write(json.dumps(index_record, ensure_ascii=False, allow_nan=False) + "\\n")
+                        index_output.flush()
+                        if not provenance["training_eligible"]:
+                            unlicensed_pages += 1
+                            continue
                         digest = provenance["content_sha256"]
                         canonical_url = provenance["url"]
                         if digest in seen_hashes:
@@ -360,6 +381,9 @@ class GlobalWebResearch:
                 database.commit()
             return {
                 "records": accepted,
+                "research_pages": research_pages,
+                "unlicensed_pages": unlicensed_pages,
+                "research_index": str(index_target),
                 "queries": len(queries),
                 "search_results": searched,
                 "unique_domains": len(domains),
