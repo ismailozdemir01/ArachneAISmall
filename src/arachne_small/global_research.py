@@ -120,7 +120,7 @@ class GlobalWebResearch:
                 and parsed.hostname.casefold() not in _TRACKING_HOSTS
                 and parsed.username is None
                 and parsed.password is None
-                and not parsed.port or parsed.port == 443
+                and (parsed.port is None or parsed.port == 443)
             )
         except ValueError:
             return False
