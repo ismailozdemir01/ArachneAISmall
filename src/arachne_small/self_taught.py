@@ -520,10 +520,15 @@ def run_self_taught_cycle(
             }
 
     if acquisition["records"] < MIN_LICENSED_TRAINING_DOCUMENTS:
+        reason = (
+            "insufficient_licensed_training_corpus"
+            if acquisition["records"] > 0
+            else acquisition.get("research_status", "research_only_no_licensed_training_data")
+        )
         acquisition = {
             **acquisition,
             "research_only": True,
-            "research_status": "insufficient_licensed_training_corpus",
+            "research_status": reason,
             "minimum_training_documents": MIN_LICENSED_TRAINING_DOCUMENTS,
         }
         return {
@@ -531,7 +536,7 @@ def run_self_taught_cycle(
             "acquisition": acquisition,
             "research_only": True,
             "promoted": False,
-            "reason": "insufficient_licensed_training_corpus",
+            "reason": reason,
             "active_model_unchanged": True,
         }
     split_dir = cycle / "split"
