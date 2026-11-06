@@ -172,8 +172,14 @@ class GlobalWebResearch:
                 try:
                     payload, _, _ = self._request(origin + "/robots.txt", "text/plain")
                     parser.parse(payload.decode("utf-8", errors="replace").splitlines())
+                except urllib.error.HTTPError as exc:
+                    # RFC 9309 treats 4xx robots responses as unavailable; 401/403 remain denied.
+                    if exc.code == 404:
+                        parser.parse([])
+                    else:
+                        return False
                 except (OSError, ValueError, urllib.error.URLError):
-                    # Fail closed when robots policy cannot be read.
+                    # Network/server failures fail closed; do not crawl without a readable policy.
                     return False
                 self._robots[origin] = parser
         return parser.can_fetch(USER_AGENT, url)
@@ -204,7 +210,7 @@ class GlobalWebResearch:
                         candidates.append(absolute)
                     if len(candidates) >= MAX_SEARCH_RESULTS:
                         return candidates
-            except (OSError, ValueError, urllib.error.URLError) as exc:
+            except (OSError, ValueError, RuntimeError, urllib.error.URLError) as exc:
                 provider_errors.append(f"{endpoint}: {exc}")
                 LOGGER.warning("Search provider %s failed: %s", endpoint, exc)
         if not candidates and provider_errors:
@@ -305,7 +311,7 @@ class GlobalWebResearch:
                     try:
                         urls = self._search(query)
                         searched += len(urls)
-                    except (OSError, ValueError, urllib.error.URLError) as exc:
+                    except (OSError, ValueError, RuntimeError, urllib.error.URLError) as exc:
                         errors += 1
                         LOGGER.warning("Global search provider failed for query %r: %s", query, exc)
                         continue
