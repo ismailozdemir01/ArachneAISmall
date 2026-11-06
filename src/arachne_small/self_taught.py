@@ -453,7 +453,7 @@ def run_self_taught_cycle(
     # Search-engine discovery is broad but cannot guarantee that a cycle finds
     # machine-readable reuse licenses. Fall back to Wikimedia's per-page license
     # metadata instead of silently remaining in research-only mode forever.
-    if acquisition["records"] == 0:
+    if acquisition["records"] < 40:
         wikipedia_path = cycle / "wikipedia-licensed.jsonl"
         try:
             wikipedia = acquire_wikipedia_corpus(
@@ -463,6 +463,9 @@ def run_self_taught_cycle(
                 max_attempts_per_language=80,
                 seen_database=work_root / "seen-wikipedia-pages.sqlite3",
             )
+        except WikimediaRateLimited:
+            # Respect the provider's Retry-After response; never disguise a 429 as an empty corpus.
+            raise
         except RuntimeError as exc:
             if "Insufficient licensed documents" not in str(exc):
                 raise
