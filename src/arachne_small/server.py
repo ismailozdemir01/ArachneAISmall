@@ -320,6 +320,9 @@ async def _self_taught_loop() -> None:
             )
             version = _read_release_version(Path(os.environ.get("ARACHNE_SMALL_RELEASE_DIR", "artifacts/releases")))
             if result.get("research_only"):
+                # Keep discovery active: a no-license cycle retries after 30 minutes,
+                # not after the normal six-hour learning interval.
+                next_delay = min(interval, 1800)
                 SELF_TAUGHT_STATUS.update({
                     "state": result["reason"],
                     "last_cycle": result["cycle_id"],
