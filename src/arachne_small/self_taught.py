@@ -65,6 +65,7 @@ _ALLOWED_LICENSES = {
 _MIN_DOCUMENT_CHARS = 350
 _MAX_DOCUMENT_CHARS = 24000
 _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+MIN_LICENSED_TRAINING_DOCUMENTS = 20
 _CONTACT_OR_SECRET = re.compile(
     r"(?:[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|"
     r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|"
@@ -498,13 +499,19 @@ def run_self_taught_cycle(
                 },
             }
 
-    if acquisition["records"] == 0:
+    if acquisition["records"] < MIN_LICENSED_TRAINING_DOCUMENTS:
+        acquisition = {
+            **acquisition,
+            "research_only": True,
+            "research_status": "insufficient_licensed_training_corpus",
+            "minimum_training_documents": MIN_LICENSED_TRAINING_DOCUMENTS,
+        }
         return {
             "cycle_id": cycle_id,
             "acquisition": acquisition,
             "research_only": True,
             "promoted": False,
-            "reason": acquisition.get("research_status", "research_only_no_licensed_training_data"),
+            "reason": "insufficient_licensed_training_corpus",
             "active_model_unchanged": True,
         }
     split_dir = cycle / "split"
