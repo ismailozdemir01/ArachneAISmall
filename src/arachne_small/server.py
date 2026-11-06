@@ -322,7 +322,13 @@ async def _self_taught_loop() -> None:
             if result.get("research_only"):
                 # Keep discovery active: a no-license cycle retries after 30 minutes,
                 # not after the normal six-hour learning interval.
-                next_delay = min(interval, 1800)
+                retry_after = result.get("acquisition", {}).get("retry_after_seconds", 0.0)
+                retry_delay = (
+                    min(21600.0, max(0.0, float(retry_after)))
+                    if isinstance(retry_after, (int, float)) and math.isfinite(retry_after)
+                    else 0.0
+                )
+                next_delay = max(min(interval, 1800), retry_delay)
                 SELF_TAUGHT_STATUS.update({
                     "state": result["reason"],
                     "last_cycle": result["cycle_id"],
