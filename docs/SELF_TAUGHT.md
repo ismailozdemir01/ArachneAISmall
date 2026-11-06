@@ -35,7 +35,7 @@ The worker never trains on raw chat traffic or its own generated answers. User c
 - `data/self_taught/cycle-*/split/`: per-cycle deduplicated train/validation documents and manifest.
 - `data/self_taught/replay/train.jsonl`: cumulative training replay corpus, including new licensed pages from successful acquisition cycles.
 - `data/self_taught/cycle-*/split/validation.jsonl` and `data/self_taught/cycle-*/validation.bin`: fresh per-cycle holdout, never used for gradient updates.
-- `data/self_taught/seen-pages.sqlite3`: cross-cycle page-ID and content-hash deduplication index.
+- `data/self_taught/seen-wikipedia-pages.sqlite3`: cross-cycle Wikimedia page-ID and content-hash deduplication index.
 - `artifacts/self_taught/cycle-*/arachne_small.pt`: PyTorch model checkpoint.
 - `artifacts/self_taught/cycle-*/checkpoints/`: optimizer-aware resume checkpoints.
 - `artifacts/releases/current.json`: active content-addressed release pointer.
