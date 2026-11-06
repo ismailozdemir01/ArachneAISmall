@@ -184,3 +184,35 @@ def test_global_research_normalizes_legacy_http_creative_commons_license_uri():
         ["http://not-creativecommons.org/licenses/by/4.0/"],
         "https://www.ebi.ac.uk/article",
     ) is None
+
+def test_europe_pmc_adapter_accepts_explicit_legacy_http_cc_license(monkeypatch):
+    researcher = GlobalWebResearch(max_pages=1)
+    article_text = " ".join(["Open access scientific article text."] * 1000)
+    search_payload = json.dumps({
+        "resultList": {"result": [{"pmcid": "PMC1234567", "title": "Verified article"}]}
+    }).encode()
+    xml_payload = (
+        '<article xmlns:xlink="http://www.w3.org/1999/xlink">'
+        '<front><article-meta><title-group><article-title>Verified article</article-title>'
+        '</title-group><permissions><license xlink:href="http://creativecommons.org/licenses/by/4.0/">'
+        '<license-p>Reuse permitted under CC BY 4.0.</license-p></license></permissions>'
+        '</article-meta></front><body><sec><p>'
+        + article_text
+        + '</p></sec></body></article>'
+    ).encode()
+
+    def request(url, _accept):
+        if "/search?" in url:
+            return search_payload, url, "application/json"
+        if "/PMC1234567/fullTextXML" in url:
+            return xml_payload, url, "application/xml"
+        raise AssertionError(f"Unexpected Europe PMC URL: {url}")
+
+    monkeypatch.setattr(researcher, "_request", request)
+    records = researcher._europe_pmc_records(1)
+    assert len(records) == 1
+    provenance = records[0]["provenance"]
+    assert provenance["training_eligible"] is True
+    assert provenance["license"] == "4.0"
+    assert provenance["license_url"] == "https://creativecommons.org/licenses/by/4.0/"
+    assert provenance["url"] == "https://europepmc.org/articles/PMC1234567"
