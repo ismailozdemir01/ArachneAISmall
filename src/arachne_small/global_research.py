@@ -115,6 +115,7 @@ class GlobalWebResearch:
             self.search_endpoints = (
                 "https://html.duckduckgo.com/html/",
                 "https://www.mojeek.com/search",
+                "https://www.bing.com/search?format=rss",
             )
         if not self.search_endpoints or any(not self._valid_url(item) for item in self.search_endpoints):
             raise ValueError("Search endpoints must be HTTPS URLs on valid public hosts.")
@@ -192,12 +193,25 @@ class GlobalWebResearch:
             url = endpoint + ("&" if "?" in endpoint else "?") + urllib.parse.urlencode({"q": query})
             try:
                 payload, _, content_type = self._request(url)
-                if "html" not in content_type:
-                    raise ValueError("Search provider did not return HTML.")
-                parser = _PageParser()
-                parser.feed(payload.decode("utf-8", errors="replace"))
                 provider_host = (urlparse(endpoint).hostname or "").casefold()
-                for href in parser.links:
+                result_links: list[str] = []
+                if "html" in content_type:
+                    parser = _PageParser()
+                    parser.feed(payload.decode("utf-8", errors="replace"))
+                    result_links = parser.links
+                elif any(kind in content_type for kind in ("xml", "rss", "atom")):
+                    upper_payload = payload.upper()
+                    if b"<!DOCTYPE" in upper_payload or b"<!ENTITY" in upper_payload:
+                        raise ValueError("Search provider XML with DTD/entity declarations was rejected.")
+                    root = ET.fromstring(payload)
+                    result_links = [
+                        (node.text or "").strip()
+                        for node in root.iter()
+                        if self._xml_local_name(node.tag) == "link" and (node.text or "").strip()
+                    ]
+                else:
+                    raise ValueError("Search provider returned an unsupported content type.")
+                for href in result_links:
                     absolute = urljoin(url, html.unescape(href))
                     parsed = urlparse(absolute)
                     if parsed.hostname and (
@@ -356,7 +370,7 @@ class GlobalWebResearch:
             if len(text) < MIN_TEXT_CHARS or len(text) > MAX_TEXT_CHARS or SECRET_PATTERN.search(text):
                 continue
             canonical = f"https://europepmc.org/articles/{pmcid}"
-            digest = hashlib.sha256((canonical + "\\n" + text).encode("utf-8")).hexdigest()
+            digest = hashlib.sha256((canonical + "\n" + text).encode("utf-8")).hexdigest()
             records.append({
                 "text": text,
                 "provenance": {
