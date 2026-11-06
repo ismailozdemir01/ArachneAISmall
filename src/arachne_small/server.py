@@ -393,7 +393,7 @@ async def lifespan(app: FastAPI):
         discovery_task = asyncio.create_task(_module_discovery_loop(registry_urls))
     if os.environ.get("ARACHNE_SMALL_AUTO_LEARN") == "1":
         learning_task = asyncio.create_task(_automatic_learning_loop())
-    if os.environ.get("ARACHNE_SMALL_SELF_TAUGHT") == "1":
+    if os.environ.get("ARACHNE_SMALL_SELF_TAUGHT", "1").strip() == "1":
         self_taught_task = asyncio.create_task(_self_taught_loop())
     try:
         yield
