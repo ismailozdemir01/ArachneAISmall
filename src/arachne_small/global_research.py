@@ -262,7 +262,7 @@ class GlobalWebResearch:
                 "quality_signals": {
                     "word_count": len(text.split()),
                     "title_present": True,
-                    "explicit_reuse_license": True,
+                    "explicit_reuse_license": license_data is not None,
                     "robots_allowed": True,
                 },
             },
@@ -310,7 +310,7 @@ class GlobalWebResearch:
             )
             database.execute("BEGIN IMMEDIATE")
         try:
-            with target.open("x", encoding="utf-8", newline="\n") as output:
+            with target.open("x", encoding="utf-8", newline="\n") as output, index_target.open("x", encoding="utf-8", newline="\n") as index_output:
                 for query in queries:
                     try:
                         urls = self._search(query)
