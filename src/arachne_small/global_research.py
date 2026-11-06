@@ -224,6 +224,7 @@ class GlobalWebResearch:
             candidate = urljoin(page_url, html.unescape(raw)).strip()
             try:
                 parsed = urlparse(candidate)
+                port = parsed.port
             except ValueError:
                 continue
             # Publisher XML commonly emits the historical HTTP form of the
@@ -234,7 +235,7 @@ class GlobalWebResearch:
                 or (parsed.hostname or "").casefold() != "creativecommons.org"
                 or parsed.username is not None
                 or parsed.password is not None
-                or parsed.port not in {None, 80, 443}
+                or port not in {None, 80, 443}
             ):
                 continue
             normalized = (
