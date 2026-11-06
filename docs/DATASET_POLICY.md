@@ -1,6 +1,6 @@
 # Dataset Intake and Governance
 
-ArachneAISmall does not bundle third-party corpora. It includes an autonomous Wikimedia Wikipedia acquisition adapter that runs during `arachne-small serve`; other sources still require explicit source and license records.
+ArachneAISmall does not bundle third-party corpora. Its autonomous global research engine discovers public web sources across domains; model-training eligibility is determined independently by explicit source-license metadata.
 
 ## Required intake record
 
