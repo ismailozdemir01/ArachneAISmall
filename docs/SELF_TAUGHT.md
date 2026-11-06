@@ -16,7 +16,7 @@ The first cycle starts from random weights; it does not download an arbitrary pr
 8. Trains a SentencePiece tokenizer and a conservative, from-scratch bootstrap Transformer.
 9. Promotes a candidate only after artifact verification and held-out evaluation succeed.
 
-The global research crawler is deliberately provider-independent at the page-fetching layer. Wikimedia is no longer the required source and may be discovered like any other public website; the system does not depend on a Wikimedia API account or endpoint.
+The global research crawler is deliberately provider-independent at the page-fetching layer. When a web-search cycle finds no explicitly licensed training documents, the worker makes a bounded fallback attempt against Wikimedia's REST APIs, verifies each page's CC BY-SA license and excludes living-person category pages. Wikimedia is therefore a fallback source, not the sole research provider.
 
 The initial bootstrap profile is intentionally small (128 hidden dimensions, 4 layers, 256-token context; approximately 1.8 million parameters depending on tokenizer vocabulary). It is a functioning training bootstrap, not the configured 1.5B target model and not a claim of assistant-level capability.
 ## Continual loop
@@ -27,7 +27,9 @@ The worker never trains on raw chat traffic or its own generated answers. User c
 
 ## Files
 
-- `data/self_taught/cycle-*/global-research.jsonl`: eligible acquired text with per-page provenance, used for model training.
+- `data/self_taught/cycle-*/global-research.jsonl`: eligible public-web text with per-page provenance, used for model training when found.
+- `data/self_taught/cycle-*/wikipedia-licensed.jsonl`: verified Wikimedia CC BY-SA fallback corpus, used only when the global web cycle finds no eligible training documents.
+- `data/self_taught/seen-wikipedia-pages.sqlite3`: cross-cycle Wikimedia page-ID and content-hash deduplication index.
 - `data/self_taught/cycle-*/research-index.jsonl`: source metadata and short excerpts for discovered pages, including pages excluded from training; this is a retrieval/source index, not training data.
 - `data/self_taught/seen-global-sources.sqlite3`: cross-cycle URL and content-hash deduplication for training-eligible pages.
 - `data/self_taught/cycle-*/split/`: per-cycle deduplicated train/validation documents and manifest.
