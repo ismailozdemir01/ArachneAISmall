@@ -222,7 +222,26 @@ class GlobalWebResearch:
     def _approved_license(license_urls: list[str], page_url: str) -> tuple[str, str] | None:
         for raw in license_urls:
             candidate = urljoin(page_url, html.unescape(raw)).strip()
-            normalized = candidate.split("#", 1)[0].split("?", 1)[0].rstrip("/") + "/"
+            try:
+                parsed = urlparse(candidate)
+            except ValueError:
+                continue
+            # Publisher XML commonly emits the historical HTTP form of the
+            # canonical Creative Commons URI. Normalize only that exact
+            # public host; never upgrade arbitrary HTTP license URLs.
+            if (
+                parsed.scheme.casefold() not in {"http", "https"}
+                or (parsed.hostname or "").casefold() != "creativecommons.org"
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.port not in {None, 80, 443}
+            ):
+                continue
+            normalized = (
+                "https://creativecommons.org"
+                + parsed.path.split("?", 1)[0].split("#", 1)[0].rstrip("/")
+                + "/"
+            )
             for approved in ALLOWED_LICENSES:
                 if normalized.casefold() == approved.casefold():
                     return approved.rsplit("/", 2)[-2].upper(), approved
@@ -493,8 +512,8 @@ class GlobalWebResearch:
                         "training_eligible": True,
                         "snippet": record["text"][:400],
                     }
-                    index_output.write(json.dumps(index_record, ensure_ascii=False, allow_nan=False) + "\\n")
-                    output.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + "\\n")
+                    index_output.write(json.dumps(index_record, ensure_ascii=False, allow_nan=False) + "\n")
+                    output.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + "\n")
                     index_output.flush()
                     output.flush()
                     seen_hashes.add(digest)
