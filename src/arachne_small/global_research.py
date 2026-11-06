@@ -282,7 +282,7 @@ class GlobalWebResearch:
                 "Turkish bilim araştırma mühendislik açık erişim",
                 "multilingual educational resources open license",
             ]
-        queries = [query.strip() for query in queries if isinstance(query, str) and query.strip()]
+        queries = [query.strip() for query in queries if isinstance(query, str) and query.strip()][:20]
         if not queries:
             raise ValueError("At least one non-empty global research query is required.")
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -293,6 +293,7 @@ class GlobalWebResearch:
         seen_hashes: set[str] = set()
         domains: set[str] = set()
         accepted = 0
+        scanned = 0
         research_pages = 0
         unlicensed_pages = 0
         searched = 0
@@ -306,7 +307,7 @@ class GlobalWebResearch:
             database = sqlite3.connect(database_path, timeout=30)
             database.execute("PRAGMA journal_mode=WAL")
             database.execute(
-                "CREATE TABLE IF NOT EXISTS seen_sources (url TEXT PRIMARY KEY, content_sha256 TEXT NOT NULL UNIQUE, first_seen INTEGER NOT NULL)"
+                "CREATE TABLE IF NOT EXISTS seen_sources (content_sha256 TEXT PRIMARY KEY, url TEXT NOT NULL, first_seen INTEGER NOT NULL)"
             )
             database.execute("BEGIN IMMEDIATE")
         try:
@@ -320,8 +321,9 @@ class GlobalWebResearch:
                         LOGGER.warning("Global search provider failed for query %r: %s", query, exc)
                         continue
                     for url in urls:
-                        if accepted >= self.max_pages:
+                        if accepted >= self.max_pages or scanned >= self.max_pages * 5:
                             break
+                        scanned += 1
                         if url in seen_urls:
                             continue
                         seen_urls.add(url)
@@ -356,8 +358,8 @@ class GlobalWebResearch:
                         if digest in seen_hashes:
                             continue
                         if database is not None and database.execute(
-                            "SELECT 1 FROM seen_sources WHERE url=? OR content_sha256=?",
-                            (canonical_url, digest),
+                            "SELECT 1 FROM seen_sources WHERE content_sha256=?",
+                            (digest,),
                         ).fetchone() is not None:
                             continue
                         seen_hashes.add(digest)
@@ -366,8 +368,8 @@ class GlobalWebResearch:
                         output.flush()
                         if database is not None:
                             database.execute(
-                                "INSERT INTO seen_sources(url,content_sha256,first_seen) VALUES(?,?,?)",
-                                (canonical_url, digest, int(time.time())),
+                                "INSERT INTO seen_sources(content_sha256,url,first_seen) VALUES(?,?,?)",
+                                (digest, canonical_url, int(time.time())),
                             )
                         accepted += 1
                     if accepted >= self.max_pages:
