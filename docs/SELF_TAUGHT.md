@@ -4,19 +4,21 @@
 
 The `arachne-small serve` command enables the self-taught worker by default. It runs in the background and does not block API startup. Set `ARACHNE_SMALL_SELF_TAUGHT=0` before starting the server to disable it. Direct ASGI launches can enable it with `ARACHNE_SMALL_SELF_TAUGHT=1`.
 
-The first cycle starts from random weights; it does not download an arbitrary pretrained checkpoint. It:
+The first cycle starts from random weights; it does not download an arbitrary pretrained checkpoint. It now uses the independent global research engine rather than treating Wikimedia as its training provider:
 
-1. Queries Turkish and English Wikipedia's public REST APIs for random article summaries.
-2. Retrieves each page's own REST metadata and accepts only pages whose reported license URL is CC BY-SA 3.0 or CC BY-SA 4.0.
-3. Records the page URL, history URL, page/revision IDs, language, license and retrieval timestamp with each document.
-4. Excludes pages categorized as living people and documents containing obvious credential/contact patterns.
-5. Deduplicates and splits documents before training the tokenizer.
-6. Trains a SentencePiece tokenizer and a conservative, from-scratch bootstrap Transformer.
-7. Writes `arachne_small.pt` immediately after model initialization, updates it at checkpoint intervals, and marks it `trained` only after final validation succeeds.
-8. Creates a SafeTensors inference artifact and promotes the first completed model to the local release registry.
+1. Searches the public web using broad multilingual research queries (customizable through `ARACHNE_RESEARCH_QUERIES`).
+2. Follows discovered HTTPS pages across different domains, observes each site's `robots.txt`, uses a descriptive User-Agent, limits response sizes and applies per-host request pacing.
+3. Extracts readable HTML text and source metadata without executing scripts, downloading binaries, logging in, or running page-provided code.
+4. Records canonical URL, domain, title, retrieval time, content hash, and the page's explicit reuse license.
+5. Adds content to the training corpus only when the page declares a license on the explicit CC0/CC BY/CC BY-SA allowlist. Public visibility alone is not treated as permission to train.
+6. Rejects pages without an approved license, pages with obvious credential/contact patterns, malformed/oversized responses, and pages disallowed by robots policy.
+7. Deduplicates and splits eligible documents before training the tokenizer.
+8. Trains a SentencePiece tokenizer and a conservative, from-scratch bootstrap Transformer.
+9. Promotes a candidate only after artifact verification and held-out evaluation succeed.
+
+The global research crawler is deliberately provider-independent at the page-fetching layer. Wikimedia is no longer the required source and may be discovered like any other public website; the system does not depend on a Wikimedia API account or endpoint.
 
 The initial bootstrap profile is intentionally small (128 hidden dimensions, 4 layers, 256-token context; approximately 1.8 million parameters depending on tokenizer vocabulary). It is a functioning training bootstrap, not the configured 1.5B target model and not a claim of assistant-level capability.
-
 ## Continual loop
 
 After bootstrap, the worker repeats acquisition and training every six hours by default. A failed cycle is retried after 15 minutes (or the configured interval if shorter). It reuses the current model's tokenizer and architecture, initializes candidate weights from the current verified release, appends only the current cycle's training split to a persistent deduplicated replay corpus, and evaluates baseline and candidate on that cycle's fresh held-out validation split. No cycle's validation documents are ever added to gradient training. A candidate is promoted only when validation loss is no worse than the baseline. Promotion is content-addressed and atomic. The server loads the promoted model only after successful validation; failed acquisition, training, evaluation or activation leaves the current model active.
@@ -25,7 +27,7 @@ The worker never trains on raw chat traffic or its own generated answers. User c
 
 ## Files
 
-- `data/self_taught/cycle-*/wikipedia.jsonl`: acquired text with per-page provenance.
+- `data/self_taught/cycle-*/global-research.jsonl`: eligible acquired text with per-page provenance.
 - `data/self_taught/cycle-*/split/`: per-cycle deduplicated train/validation documents and manifest.
 - `data/self_taught/replay/train.jsonl`: cumulative training replay corpus, including new licensed pages from successful acquisition cycles.
 - `data/self_taught/cycle-*/split/validation.jsonl` and `data/self_taught/cycle-*/validation.bin`: fresh per-cycle holdout, never used for gradient updates.
@@ -53,17 +55,17 @@ The status endpoint `GET /api/status` includes `self_taught.enabled`, `self_taug
 
 ## License and source limitations
 
-Wikimedia page metadata is checked individually; public visibility alone is not treated as permission. Wikimedia documents commonly use CC BY-SA 3.0 or 4.0, but page-level licensing and attribution obligations must be preserved. Every record keeps a page link and history link. The crawler rejects pages whose returned license is missing or outside the explicit allowlist.
+The research engine searches across public websites, but it does not assume that public accessibility grants training rights. A page enters the model-training corpus only when its own HTML declares an exact license URL on the explicit CC0, CC BY or CC BY-SA allowlist. Pages without machine-verifiable reuse metadata remain excluded from training. The crawler records the source URL, canonical URL, domain, license and retrieval timestamp.
 
-Wikimedia's own documentation warns that license and attribution metadata can be incomplete. This automated check is a technical filter, not a legal opinion or guarantee. Before distributing trained weights or a service trained on this corpus, review applicable attribution, ShareAlike, privacy, and model-output obligations for the intended jurisdiction and distribution model. See [Wikimedia content reuse](https://www.mediawiki.org/wiki/Wikimedia_APIs/Content_reuse), [REST page metadata](https://www.mediawiki.org/wiki/API:REST_API/Reference), and [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
-
+This automated metadata check is a conservative technical filter, not a legal opinion or guarantee that every page element has the same rights status. Before distributing trained weights or a service trained on this corpus, review applicable attribution, ShareAlike, privacy, and model-output obligations for the intended jurisdiction and distribution model.
 ## Operational boundaries
 
-- Network collection is limited to the two Wikimedia Wikipedia REST/API origins and uses a descriptive User-Agent and a one-request-per-second throttle.
-- Only text extracts are collected; images and media are not downloaded.
-- The worker does not execute downloaded code, install external modules, or fetch third-party model checkpoints.
+- Discovery uses public web search results; page collection is restricted to HTTPS, robots-permitted HTML pages.
+- The crawler applies per-host request pacing, response-size limits, bounded page counts and a descriptive User-Agent.
+- Only text is extracted; images, media, executables and arbitrary binary downloads are not collected.
+- Scripts and page-provided code are never executed. The worker does not log in, bypass access controls, install external modules, or fetch third-party model checkpoints.
+- Training data requires an explicit allowlisted reuse license. Unlicensed or unverifiable pages cannot enter gradient training.
 - Every acquisition batch is split at document level. Only its training split is appended to the cumulative replay corpus; its fresh validation split is used for that cycle's paired baseline/candidate evaluation and is never used for gradient updates.
-- Page IDs and normalized document content are deduplicated across cycles to reduce validation contamination.
 - A rejected candidate never replaces the active model.
-- Failed acquisition/training cycles are retried after 15 minutes; successful cycles use the configured repeat interval.
+- Failed acquisition/training cycles are retried; successful cycles use the configured repeat interval.
 - The bootstrap model is deliberately small. Moving to the 1.5B configuration requires suitable compute and a separate measured scaling/training plan; the worker does not silently claim or fabricate a 1.5B model.
