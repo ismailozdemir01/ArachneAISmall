@@ -12,7 +12,7 @@
 >
 > **TR:** Git deposunda eğitilmiş 1.5B model ağırlıkları yayımlanmaz. `arachne-small serve` otomatik self-taught işçisini başlatır; Türkçe/İngilizce Wikipedia sayfalarını sayfa bazında lisans kontrolüyle toplar ve yaklaşık 1.8M parametreli küçük bootstrap modeli sıfırdan eğiterek `arachne_small.pt` üretir. Bu model 1.5B hedefi değildir. Model ancak eğitim, doğrulama ve yayınlama tamamlanınca kullanıma açılır.
 >
-> **EN:** The source code, training pipeline, API, and web interface are available. The Git repository does not ship trained weights. Running `arachne-small serve` starts an autonomous self-taught worker that acquires page-level license-checked Turkish/English Wikipedia text, trains a small bootstrap model from random initialization, and writes `arachne_small.pt`. The initial bootstrap is approximately 1.8M parameters, not the 1.5B target. Generation becomes ready only after training, validation and verified promotion complete. See [Autonomous Self-Taught Learning](docs/SELF_TAUGHT.md).
+> **EN:** The source code, training pipeline, API, and web interface are available. The Git repository does not ship trained weights. Running `arachne-small serve` starts an autonomous global research worker that discovers public web sources across domains, observes robots policies, records source provenance, and admits only explicitly licensed material into model training. Wikimedia is neither required nor the only source. It trains a small bootstrap model from random initialization and writes `arachne_small.pt`. The initial bootstrap is approximately 1.8M parameters, not the 1.5B target. Generation becomes ready only after training, validation and verified promotion complete. See [Autonomous Self-Taught Learning](docs/SELF_TAUGHT.md).
 
 ---
 
