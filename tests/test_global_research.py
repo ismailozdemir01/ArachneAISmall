@@ -4,6 +4,30 @@ import urllib.error
 from arachne_small.global_research import GlobalWebResearch, _PageParser
 
 
+def test_global_research_accepts_bing_rss_search_results(monkeypatch):
+    researcher = GlobalWebResearch(
+        max_pages=2,
+        search_endpoint="https://www.bing.com/search?format=rss",
+    )
+    payload = (
+        b'<?xml version="1.0"?><rss><channel>'
+        b'<item><title>Open research</title><link>https://example.org/research</link></item>'
+        b'<item><title>Documentation</title><link>https://docs.example.net/guide</link></item>'
+        b'</channel></rss>'
+    )
+    monkeypatch.setattr(
+        researcher,
+        "_request",
+        lambda _url, _accept="text/html,application/xhtml+xml": (
+            payload, "https://www.bing.com/search?format=rss", "application/rss+xml"
+        ),
+    )
+    assert researcher._search("open scientific research") == [
+        "https://example.org/research",
+        "https://docs.example.net/guide",
+    ]
+
+
 def test_global_research_accepts_only_explicit_allowlisted_reuse_licenses():
     assert GlobalWebResearch._approved_license(
         ["https://creativecommons.org/licenses/by/4.0/"], "https://example.org/page"
@@ -216,3 +240,7 @@ def test_europe_pmc_adapter_accepts_explicit_legacy_http_cc_license(monkeypatch)
     assert provenance["license"] == "4.0"
     assert provenance["license_url"] == "https://creativecommons.org/licenses/by/4.0/"
     assert provenance["url"] == "https://europepmc.org/articles/PMC1234567"
+    expected_digest = __import__("hashlib").sha256(
+        ("https://europepmc.org/articles/PMC1234567" + "\n" + article_text).encode("utf-8")
+    ).hexdigest()
+    assert provenance["content_sha256"] == expected_digest
