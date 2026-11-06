@@ -474,9 +474,22 @@ def run_self_taught_cycle(
             # Respect the provider's Retry-After response; never disguise a 429 as an empty corpus.
             raise
         except RuntimeError as exc:
-            if "Insufficient licensed documents" not in str(exc):
+            message = str(exc)
+            if not any(
+                marker in message
+                for marker in (
+                    "Insufficient licensed documents",
+                    "No licensed documents were acquired",
+                )
+            ):
                 raise
-            wikipedia = {"records": 0, "by_language": {"tr": 0, "en": 0}}
+            wikipedia = {
+                "records": 0,
+                "by_language": {"tr": 0, "en": 0},
+                "complete": False,
+                "rate_limited_languages": [],
+                "retry_after_seconds": 0.0,
+            }
         if wikipedia["records"] > 0:
             # Preserve any globally discovered, explicitly licensed records;
             # the fallback supplements the corpus instead of replacing it.
