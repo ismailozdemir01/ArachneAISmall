@@ -25,6 +25,7 @@ from .data import encode_jsonl, sha256_file
 from .trainer import train
 from .artifacts import verify_artifact
 from .learning import promote_candidate, _read_release_version
+from .global_research import GlobalWebResearch
 
 class WikimediaRateLimited(RuntimeError):
     """A Wikimedia 429 response with a bounded server-provided cooldown."""
@@ -444,17 +445,14 @@ def run_self_taught_cycle(
     artifact_root.mkdir(parents=True, exist_ok=True)
     release_root.mkdir(parents=True, exist_ok=True)
 
-    raw_path = cycle / "wikipedia.jsonl"
-    acquisition = acquire_wikipedia_corpus(
-        raw_path, articles_per_language=articles_per_language,
-        seen_database=work_root / "seen-pages.sqlite3",
-    )
+    raw_path = cycle / "global-research.jsonl"
+    acquisition = GlobalWebResearch(max_pages=max(articles_per_language * 2, 40)).acquire(raw_path)
     split_dir = cycle / "split"
     dataset_manifest = prepare_corpus(
         str(raw_path), str(split_dir), text_field="text",
         validation_fraction=0.2, seed=1337,
-        source="Wikimedia Wikipedia per-page REST metadata; see raw JSONL provenance",
-        license_name="Mixed per-page CC BY-SA 3.0/4.0; exact page license and attribution are recorded per document.",
+        source="Global web research; per-document canonical URL, domain, retrieval time, content hash and reuse license are recorded in raw JSONL provenance.",
+        license_name="Only explicitly declared CC0, CC BY or CC BY-SA licenses on the approved license allowlist; exact license and source are recorded per document.",
     )
     split_train_jsonl = split_dir / "train.jsonl"
     validation_jsonl = split_dir / "validation.jsonl"
