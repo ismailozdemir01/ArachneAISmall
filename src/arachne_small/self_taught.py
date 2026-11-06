@@ -446,7 +446,7 @@ def run_self_taught_cycle(
     release_root.mkdir(parents=True, exist_ok=True)
 
     raw_path = cycle / "global-research.jsonl"
-    acquisition = GlobalWebResearch(max_pages=max(articles_per_language * 2, 40)).acquire(
+    acquisition = GlobalWebResearch(max_pages=min(max(articles_per_language * 2, 40), 500)).acquire(
         raw_path, seen_database=work_root / "seen-global-sources.sqlite3"
     )
     split_dir = cycle / "split"
