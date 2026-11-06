@@ -95,7 +95,7 @@ class GlobalWebResearch:
         timeout: float = 18.0,
         max_pages: int = MAX_PAGES,
         per_host_delay: float = 2.0,
-        search_endpoint: str = "https://html.duckduckgo.com/html/",
+        search_endpoint: str | None = None,
     ) -> None:
         if not 1 <= max_pages <= 500:
             raise ValueError("max_pages must be between 1 and 500.")
@@ -104,7 +104,18 @@ class GlobalWebResearch:
         self.timeout = timeout
         self.max_pages = max_pages
         self.per_host_delay = per_host_delay
-        self.search_endpoint = search_endpoint
+        configured_endpoints = os.environ.get("ARACHNE_SEARCH_ENDPOINTS", "").strip()
+        if search_endpoint:
+            self.search_endpoints = (search_endpoint,)
+        elif configured_endpoints:
+            self.search_endpoints = tuple(item.strip() for item in configured_endpoints.split("||") if item.strip())
+        else:
+            self.search_endpoints = (
+                "https://html.duckduckgo.com/html/",
+                "https://www.mojeek.com/search",
+            )
+        if not self.search_endpoints or any(not self._valid_url(item) for item in self.search_endpoints):
+            raise ValueError("Search endpoints must be HTTPS URLs on valid public hosts.")
         self._host_lock = threading.Lock()
         self._last_host_request: dict[str, float] = {}
         self._robots: dict[str, urllib.robotparser.RobotFileParser] = {}
@@ -167,24 +178,36 @@ class GlobalWebResearch:
         return parser.can_fetch(USER_AGENT, url)
 
     def _search(self, query: str) -> list[str]:
-        url = self.search_endpoint + "?" + urllib.parse.urlencode({"q": query})
-        payload, _, content_type = self._request(url)
-        if "html" not in content_type:
-            raise ValueError("Search provider did not return HTML.")
-        parser = _PageParser()
-        parser.feed(payload.decode("utf-8", errors="replace"))
         candidates: list[str] = []
-        for href in parser.links:
-            absolute = urljoin(url, html.unescape(href))
-            parsed = urlparse(absolute)
-            if parsed.hostname and parsed.hostname.endswith("duckduckgo.com"):
-                query_values = urllib.parse.parse_qs(parsed.query)
-                absolute = query_values.get("uddg", [absolute])[0]
-            absolute = urllib.parse.urldefrag(absolute).url
-            if self._valid_url(absolute) and absolute not in candidates:
-                candidates.append(absolute)
-            if len(candidates) >= MAX_SEARCH_RESULTS:
-                break
+        provider_errors: list[str] = []
+        for endpoint in self.search_endpoints:
+            url = endpoint + ("&" if "?" in endpoint else "?") + urllib.parse.urlencode({"q": query})
+            try:
+                payload, _, content_type = self._request(url)
+                if "html" not in content_type:
+                    raise ValueError("Search provider did not return HTML.")
+                parser = _PageParser()
+                parser.feed(payload.decode("utf-8", errors="replace"))
+                provider_host = (urlparse(endpoint).hostname or "").casefold()
+                for href in parser.links:
+                    absolute = urljoin(url, html.unescape(href))
+                    parsed = urlparse(absolute)
+                    if parsed.hostname and (
+                        parsed.hostname.casefold() == provider_host
+                        or parsed.hostname.casefold().endswith(".duckduckgo.com")
+                    ):
+                        query_values = urllib.parse.parse_qs(parsed.query)
+                        absolute = query_values.get("uddg", [absolute])[0]
+                    absolute = urllib.parse.urldefrag(absolute).url
+                    if self._valid_url(absolute) and absolute not in candidates:
+                        candidates.append(absolute)
+                    if len(candidates) >= MAX_SEARCH_RESULTS:
+                        return candidates
+            except (OSError, ValueError, urllib.error.URLError) as exc:
+                provider_errors.append(f"{endpoint}: {exc}")
+                LOGGER.warning("Search provider %s failed: %s", endpoint, exc)
+        if not candidates and provider_errors:
+            raise RuntimeError("All configured global search providers failed: " + "; ".join(provider_errors))
         return candidates
 
     @staticmethod
