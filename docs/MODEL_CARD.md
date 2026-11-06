@@ -12,7 +12,7 @@
 
 ## Release status
 
-The repository contains model and training implementation code; trained weights are generated locally and are not committed. Running `arachne-small serve` starts the global research worker, which discovers public HTTPS sources across domains, records source provenance and trains only on pages with explicitly approved reuse licenses. A local run writes `arachne_small.pt` at initialization, updates it at configured save intervals, and marks it `trained` only after final validation. The bootstrap is not the 1.5B target model. A configuration describing a 1.5B-parameter model is not evidence that the model has been trained.
+The repository contains model and training implementation code; trained weights are generated locally and are not committed. Running `arachne-small serve` starts the global research worker, which discovers public HTTPS sources across domains, records source provenance and trains only on pages with explicitly approved reuse licenses. A local run publishes `arachne_small.pt` only after a candidate has completed training, artifact verification, held-out evaluation and successful promotion. Failed acquisition or evaluation leaves the active model unchanged. The bootstrap is not the 1.5B target model. A configuration describing a 1.5B-parameter model is not evidence that the model has been trained.
 
 A trained release must include actual training provenance, dataset/license records, completed-step count, validation metrics, tokenizer checksum, model-weight checksum, and hardware/training details. No quality, safety, reasoning, multilinguality, or benchmark claim should be made until measured on a documented evaluation suite.
 
