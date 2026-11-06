@@ -189,7 +189,9 @@ class GlobalWebResearch:
     def _search(self, query: str) -> list[str]:
         candidates: list[str] = []
         provider_errors: list[str] = []
+        provider_limit = max(1, MAX_SEARCH_RESULTS // len(self.search_endpoints))
         for endpoint in self.search_endpoints:
+            provider_candidates = 0
             url = endpoint + ("&" if "?" in endpoint else "?") + urllib.parse.urlencode({"q": query})
             try:
                 payload, _, content_type = self._request(url)
@@ -223,8 +225,9 @@ class GlobalWebResearch:
                     absolute = urllib.parse.urldefrag(absolute).url
                     if self._valid_url(absolute) and absolute not in candidates:
                         candidates.append(absolute)
-                    if len(candidates) >= MAX_SEARCH_RESULTS:
-                        return candidates
+                        provider_candidates += 1
+                    if provider_candidates >= provider_limit or len(candidates) >= MAX_SEARCH_RESULTS:
+                        break
             except (OSError, ValueError, RuntimeError, urllib.error.URLError) as exc:
                 provider_errors.append(f"{endpoint}: {exc}")
                 LOGGER.warning("Search provider %s failed: %s", endpoint, exc)
