@@ -449,6 +449,7 @@ class GlobalWebResearch:
                             continue
                         provenance = record["provenance"]
                         research_pages += 1
+                        domains.add(provenance["domain"])
                         index_record = {
                             "title": provenance["title"],
                             "url": provenance["url"],
